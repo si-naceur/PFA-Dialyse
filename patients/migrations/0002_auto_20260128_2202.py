@@ -10,43 +10,39 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RemoveField(
-            model_name='patient',
-            name='machine_id',
-        ),
-        migrations.AddField(
-            model_name='patient',
-            name='adresse',
-            field=models.CharField(default='Tunisie', max_length=255),
-        ),
-        migrations.AddField(
-            model_name='patient',
-            name='antecedents_medicaux',
-            field=models.CharField(default='', max_length=255),
-        ),
-        migrations.AddField(
-            model_name='patient',
-            name='contact_urgence',
-            field=models.CharField(default='', max_length=15),
-        ),
-        migrations.AddField(
-            model_name='patient',
-            name='date_of_birth',
-            field=models.DateField(default=None),
-        ),
-        migrations.AddField(
-            model_name='patient',
-            name='groupe_sanguin',
-            field=models.CharField(default='', max_length=3),
-        ),
-        migrations.AddField(
-            model_name='patient',
-            name='telephone',
-            field=models.CharField(default='', max_length=15),
-        ),
-        migrations.AddField(
-            model_name='patient',
-            name='type_de_dialyse',
-            field=models.CharField(default='', max_length=50),
-        ),
-    ]
+    migrations.AddField(
+        model_name='patient',
+        name='adresse',
+        field=models.CharField(default='Tunisie', max_length=255),
+    ),
+    migrations.AddField(
+        model_name='patient',
+        name='antecedents_medicaux',
+        field=models.CharField(default='', max_length=255),
+    ),
+    migrations.AddField(
+        model_name='patient',
+        name='contact_urgence',
+        field=models.CharField(default='', max_length=15),
+    ),
+    migrations.AddField(
+        model_name='patient',
+        name='date_of_birth',
+        field=models.DateField(default=None),
+    ),
+    migrations.AddField(
+        model_name='patient',
+        name='groupe_sanguin',
+        field=models.CharField(default='', max_length=3),
+    ),
+    migrations.AddField(
+        model_name='patient',
+        name='telephone',
+        field=models.CharField(default='', max_length=15),
+    ),
+    migrations.AddField(
+        model_name='patient',
+        name='type_de_dialyse',
+        field=models.CharField(default='', max_length=50),
+    ),
+]

@@ -8,10 +8,11 @@ from accounts.decorator import app_login_required, role_required
 from django.utils import timezone
 from datetime import timedelta
 from django.views.decorators.csrf import csrf_exempt
-from machines.models import MachineTypeModule
+from machines.models import Machine
 from monitoring.models import LiveMeasurement
 from seances.models import Seance
-
+def ia_conseil(request):
+    return JsonResponse({"message": "Test ia_conseil"})
 
 @app_login_required
 @role_required("Admin", redirect_to="accounts:error")
@@ -109,20 +110,16 @@ def push_measurements(request):
         return JsonResponse({"error": "No active session"}, status=404)
 
     for m in data["measurements"]:
-        try:
-            module = MachineTypeModule.objects.get(
-                machine_type=seance.machine.type,
-                code=m["code"]
-            )
-
-            LiveMeasurement.objects.create(
-                seance=seance,
-                module=module,
-                value=m.get("value"),
-                unit=m.get("unit", ""),
-                confidence=m.get("confidence")
-            )
-        except MachineTypeModule.DoesNotExist:
-            continue
+        LiveMeasurement.objects.create(
+            seance=seance,
+            timestamp=timezone.now(),
+            Debit_sang=m.get("Debit_sang"),
+            Taux_UF=m.get("Taux_UF"),
+            PA=m.get("PA"),
+            PTM=m.get("PTM"),
+            PV=m.get("PV"),
+            Volume_UF=m.get("Volume_UF"),
+            Heparine=m.get("Heparine")
+        )
 
     return JsonResponse({"status": "ok"})

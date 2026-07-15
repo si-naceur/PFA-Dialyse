@@ -2288,3 +2288,23 @@ def agent_superadmin(request):
     )
 
     return JsonResponse({"status": "ok", "question": question, **result})
+from django.shortcuts import render
+from monitoring.models import VitalReading, Alerte
+
+
+def real_monitoring(request):
+
+    readings = VitalReading.objects.all().order_by("-timestamp")[:50]
+
+    alertes = Alerte.objects.all().order_by("-timestamp")[:20]
+
+    context = {
+        "readings": readings,
+        "alertes": alertes,
+    }
+
+    return render(
+        request,
+        "real_monitoring.html",
+        context
+    )

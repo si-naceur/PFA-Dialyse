@@ -86,14 +86,14 @@ DATABASES = {
         'ENGINE': 'django.db.backends.sqlite3',
         'NAME': BASE_DIR / 'db.sqlite3',
     },
-    'mongodb': {  # Pour patients/sessions
+
+    'mongodb': {
         'ENGINE': 'djongo',
         'NAME': 'dyalise_db',
         'CLIENT': {
             'host': 'mongodb://127.0.0.1:27017/'
         }
     }
-
 }
 DATABASE_ROUTERS = ['PFA.routers.MongoRouter']
 
