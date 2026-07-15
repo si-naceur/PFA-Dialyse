@@ -1,0 +1,276 @@
+{% extends "base.html" %}
+{% load static %}
+{% load icons %}
+
+{% block title %}Fin de séance{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto p-4 md:p-8 space-y-6">
+
+  <!-- Header -->
+  <div>
+    <h2 class="text-xl md:text-2xl font-bold text-gray-900">Fin de séance - Valeurs post-dialyse</h2>
+    <p class="text-xs md:text-sm text-gray-600 mt-1">Enregistrez les données du patient après la séance</p>
+  </div>
+
+  <!-- Résumé de la séance -->
+  <div class="bg-blue-50 border border-blue-100 rounded-xl p-6">
+    <div class="flex items-center gap-2 text-blue-900 font-semibold mb-4">
+      <span class="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-white border">✓</span>
+      Résumé de la séance
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+      <div>
+        <div class="text-gray-600">Patient:</div>
+        <div class="font-semibold text-gray-900">{{ seance.patient.first_name }} {{ seance.patient.last_name }}</div>
+      </div>
+
+      <div>
+        <div class="text-gray-600">Heure de début:</div>
+        <div class="font-semibold text-gray-900">{{ seance.start_hour }}</div>
+      </div>
+
+      <div>
+        <div class="text-gray-600">Statut:</div>
+        <div class="font-semibold text-green-700">Terminée avec succès</div>
+      </div>
+
+      <!-- Si tu n’as pas ces données, laisse placeholder -->
+      <div>
+        <div class="text-gray-600">Heure de fin:</div>
+        <div class="font-semibold text-gray-900">-</div>
+      </div>
+
+      <div>
+        <div class="text-gray-600">Durée effective:</div>
+        <div class="font-semibold text-gray-900">{{ seance.duration }}h00</div>
+      </div>
+
+      <div>
+        <div class="text-gray-600">Volume ultrafiltré:</div>
+        <div class="font-semibold text-gray-900">-</div>
+      </div>
+    </div>
+  </div>
+
+  <form method="post" id="postSessionForm" class="space-y-6">
+    {% csrf_token %}
+
+    <!-- Vital signs -->
+    <div class="bg-white rounded-xl shadow-sm border overflow-hidden">
+      <div class="p-5 border-b">
+        <h3 class="text-lg font-semibold text-gray-900">Paramètres vitaux post-séance</h3>
+      </div>
+
+      <div class="p-5 grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-2">Poids post-dialyse (kg) *</label>
+          <input type="number" step="0.1" name="weight"
+                 value="{{ form.weight.value|default_if_none:'' }}"
+                 class="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                 required>
+          <p class="text-xs text-gray-500 mt-1">Le poids après la séance permet de calculer la perte de poids</p>
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-2">Fréquence cardiaque (bpm) *</label>
+          <input type="number" name="heart_rate"
+                 value="{{ form.heart_rate.value|default_if_none:'' }}"
+                 class="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                 required>
+        </div>
+
+        <!-- Systolique / Diastolique (UI TSX) -->
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-2">Tension artérielle systolique (mmHg) *</label>
+          <input type="number" name="bp_sys" id="bp_sys"
+                 class="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                 required>
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-2">Tension artérielle diastolique (mmHg) *</label>
+          <input type="number" name="bp_dia" id="bp_dia"
+                 class="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                 required>
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-2">Température (°C) *</label>
+          <input type="number" step="0.1" name="temperature"
+                 value="{{ form.temperature.value|default_if_none:'' }}"
+                 class="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                 required>
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-2">Saturation (%) *</label>
+          <input type="number" step="0.1" name="saturation"
+                 value="{{ form.saturation.value|default_if_none:'' }}"
+                 class="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                 required>
+        </div>
+
+        <!-- Champ réel stocké dans ton model PostSessionMeasurements -->
+        <input type="hidden" name="blood_pressure" id="blood_pressure_hidden"
+               value="{{ form.blood_pressure.value|default_if_none:'' }}">
+      </div>
+    </div>
+
+    <!-- General condition (UI-only pour l’instant) -->
+    <div class="bg-white rounded-xl shadow-sm border overflow-hidden">
+      <div class="p-5 border-b">
+        <h3 class="text-lg font-semibold text-gray-900">État général du patient</h3>
+      </div>
+
+      <div class="p-5">
+        <label class="block text-sm font-medium text-gray-700 mb-2">Évaluation globale *</label>
+        <select name="general_condition"
+                class="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                required>
+          <option value="Excellent">Excellent</option>
+          <option value="Bon" selected>Bon</option>
+          <option value="Satisfaisant">Satisfaisant</option>
+          <option value="Moyen">Moyen</option>
+          <option value="Préoccupant">Préoccupant</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Complications -->
+    <div class="bg-white rounded-xl shadow-sm border overflow-hidden">
+      <div class="p-5 border-b">
+        <h3 class="text-lg font-semibold text-gray-900 flex items-center gap-2">
+          <span class="text-orange-500">⚠</span> Complications éventuelles
+        </h3>
+        <p class="text-sm text-gray-600 mt-1">Cochez les complications survenues pendant la séance :</p>
+      </div>
+
+      <div class="p-5 grid grid-cols-1 md:grid-cols-2 gap-3">
+        {% for c in complication_options %}
+  <label class="flex items-center gap-3 border rounded-lg p-3">
+    <input type="checkbox" class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+           name="complications_list" value="{{ c }}">
+    <span class="text-sm text-gray-800">{{ c }}</span>
+  </label>
+{% endfor %}
+
+        <div class="md:col-span-2 hidden" id="otherComplicationsBox">
+          <label class="block text-sm font-medium text-gray-700 mb-2">Précisez les autres complications</label>
+          <input type="text" id="otherComplicationsInput"
+                 class="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+        </div>
+
+        <div class="md:col-span-2 hidden" id="noComplicationsBanner">
+          <div class="bg-green-50 text-green-800 border border-green-200 rounded-lg p-3 flex items-center gap-2">
+            <span class="font-semibold">✓</span> Aucune complication signalée
+          </div>
+        </div>
+
+        <!-- ce champ est celui qui sera vraiment envoyé à la view (Seance.complications) -->
+        <input type="hidden" name="complications" id="complications_hidden" value="">
+      </div>
+    </div>
+
+    <!-- Nurse notes (UI-only, si tu veux le stocker il faut un champ) -->
+    <div class="bg-white rounded-xl shadow-sm border overflow-hidden">
+      <div class="p-5 border-b">
+        <h3 class="text-lg font-semibold text-gray-900">Commentaires infirmier</h3>
+        <p class="text-sm text-gray-600 mt-1">Observations et notes complémentaires</p>
+      </div>
+      <div class="p-5">
+        <textarea name="nurse_notes" rows="4"
+                  class="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Notes sur le déroulement de la séance, comportement du patient, observations particulières..."></textarea>
+        <p class="text-xs text-gray-500 mt-2">
+          Ces notes seront ajoutées au dossier médical du patient et consultables par l'équipe soignante
+        </p>
+      </div>
+    </div>
+
+    <!-- Validation -->
+    <div class="bg-blue-50 border border-blue-100 rounded-xl p-6">
+      <h3 class="text-lg font-semibold text-blue-900">Validation de la séance</h3>
+      <p class="text-sm text-blue-800 mt-2">
+        En validant ce formulaire, vous confirmez que toutes les informations saisies sont exactes et que la séance s'est déroulée conformément aux procédures.
+      </p>
+      <p class="text-sm text-blue-800 mt-2">
+        Les données seront enregistrées dans le dossier médical du patient et ne pourront plus être modifiées.
+      </p>
+    </div>
+
+    <!-- Actions -->
+    <div class="flex gap-3">
+      <a href="{% url 'seances:planning' %}"
+         class="flex-1 bg-gray-200 text-gray-800 py-3 px-4 rounded-lg hover:bg-gray-300 transition-colors text-center">
+        Annuler
+      </a>
+      <button type="submit"
+              class="flex-1 bg-blue-600 text-white py-3 px-4 rounded-lg hover:bg-blue-700 transition-colors font-medium">
+        Valider la séance
+      </button>
+    </div>
+
+  </form>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+  // 1) Construire blood_pressure = "SYS/DIA" à partir des deux champs TSX-like
+  const sys = document.getElementById('bp_sys');
+  const dia = document.getElementById('bp_dia');
+  const bpHidden = document.getElementById('blood_pressure_hidden');
+
+  function syncBP() {
+    const s = (sys?.value || '').trim();
+    const d = (dia?.value || '').trim();
+    bpHidden.value = (s && d) ? `${s}/${d}` : '';
+  }
+  sys?.addEventListener('input', syncBP);
+  dia?.addEventListener('input', syncBP);
+
+  // 2) Complications : collecter checkboxes et remplir hidden "complications"
+  const otherBox = document.getElementById('otherComplicationsBox');
+  const otherInput = document.getElementById('otherComplicationsInput');
+  const noBanner = document.getElementById('noComplicationsBanner');
+  const hiddenComp = document.getElementById('complications_hidden');
+
+  const checkboxes = Array.from(document.querySelectorAll('input[name="complications_list"]'));
+
+  function syncComplications() {
+    const selected = checkboxes.filter(cb => cb.checked).map(cb => cb.value);
+
+    const hasOther = selected.includes('Autre');
+    if (hasOther) otherBox.classList.remove('hidden');
+    else otherBox.classList.add('hidden');
+
+    const cleaned = selected.filter(x => x !== 'Autre');
+    if (hasOther) {
+      const otherTxt = (otherInput?.value || '').trim();
+      if (otherTxt) cleaned.push(`Autre: ${otherTxt}`);
+      else cleaned.push('Autre');
+    }
+
+    hiddenComp.value = cleaned.join(', ');
+    if (selected.length === 0) noBanner.classList.remove('hidden');
+    else noBanner.classList.add('hidden');
+  }
+
+  checkboxes.forEach(cb => cb.addEventListener('change', syncComplications));
+  otherInput?.addEventListener('input', syncComplications);
+
+  // init
+  syncBP();
+  syncComplications();
+
+  // 3) Avant submit: s'assurer que hidden fields sont à jour
+  document.getElementById('postSessionForm')?.addEventListener('submit', function () {
+    syncBP();
+    syncComplications();
+  });
+})();
+</script>
+{% endblock %}

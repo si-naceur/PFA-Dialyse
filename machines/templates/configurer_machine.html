@@ -1,0 +1,264 @@
+{% extends "base.html" %}
+{% load icons %}
+{% load extras %}
+{% block title %}Configuration Machine{% endblock %}
+
+{% block content %}
+<div class="max-w-5xl mx-auto space-y-6">
+
+ <!-- ================= HEADER ================= -->
+<div class="bg-blue-600 text-white rounded-xl
+            px-6 py-4 shadow
+            flex items-center justify-between">
+
+  <div class="flex items-center gap-4">
+
+    <div class="w-10 h-10 rounded-lg bg-white/20
+                flex items-center justify-center">
+      {% icon "settings" cls="h-5 w-5 text-white" %}
+    </div>
+
+    <div class="leading-tight">
+      <h2 class="text-lg font-semibold">
+        Configuration – {{ machine.machine_id }}
+      </h2>
+      <p class="text-sm text-blue-100">
+        {{ machine.model }} • {{ machine.serial_number|default:" " }}
+      </p>
+    </div>
+
+  </div>
+
+  <a href="{% url 'machines:machines' %}"
+   class="flex items-center gap-1
+          bg-white text-blue-600
+          px-3 py-2 rounded-full
+          text-sm font-medium
+          hover:bg-blue-50 transition">
+  {% icon "arrow-left" cls="h-4 w-4 text-blue-600" %}
+  Retour
+</a>
+
+
+</div>
+
+  <!-- ================= FORM ================= -->
+  <form method="POST" class="bg-white rounded-xl shadow p-6 space-y-6">
+    {% csrf_token %}
+<!-- ================= ÉTAT ACTUEL ================= -->
+<div class="bg-white rounded-xl border shadow-sm p-6 space-y-4">
+ <div class="flex items-center gap-3">
+  <div class="w-8 h-8 rounded-lg bg-blue-100 text-blue-600
+              flex items-center justify-center">
+    {% icon "activity" cls="h-5 w-5 text-blue-600" %}
+  </div>
+  <h3 class="text-base font-semibold text-gray-800">
+      État actuel de la machine
+  </h3>
+</div>
+  
+  <div class="flex justify-between items-center bg-gray-50 p-4 rounded-lg border">
+    <div>
+      <p class="text-sm text-gray-600">Statut</p>
+      <span class="inline-block mt-1 px-3 py-1 rounded-full text-sm
+        {% if machine.status == 'Prete' %}bg-green-100 text-green-700
+        {% elif machine.status == 'Maintenance' %}bg-blue-100 text-blue-700
+        {% elif machine.status == 'Hors Service' %}bg-red-100 text-red-700
+        {% elif machine.status == 'Reserve' %}bg-yellow-100 text-yellow-700
+        {% endif %}">
+        {{ machine.status }}
+      </span>
+    </div>
+
+    <div class="text-right">
+      <p class="text-sm text-gray-600">Salle</p>
+      <p class="font-medium text-gray-800">{{ machine.location }}</p>
+    </div>
+  </div>
+</div>
+<!-- ================= ASSIGNATION RASPI ================= -->
+<div class="bg-white rounded-xl border shadow-sm p-6 space-y-4">
+
+  <div class="flex items-center gap-3">
+    <div class="w-8 h-8 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center">
+      {% icon "eye" cls="h-5 w-5 text-blue-600" %}
+    </div>
+    <h3 class="text-base font-semibold text-gray-800">
+      Assigner un appareil connecté
+    </h3>
+    
+    </div>
+  <!-- SELECT RASPI -->
+  <div class="space-y-3">
+    <p class="text-xs text-gray-500">
+      Les appareils déjà utilisés sont désactivés.
+    </p>
+
+    <select name="raspi_id"
+            class="w-full border border-gray-200 rounded-lg px-4 py-3
+                   focus:ring-2 focus:ring-blue-500">
+
+      <option value="">— Aucun appareil —</option>
+
+      {% for device in raspis %}
+        <option value="{{ device.id }}"
+        
+          {% if machine.raspi and machine.raspi.id == device.id %}
+            selected
+          {% endif %}
+
+          {% if device.machine and device.machine.id != machine.id %}
+            disabled class="text-gray-400"
+          {% endif %}>
+          {{ device.raspi_id }}
+
+          {% if device.machine and device.machine.id != machine.id %}
+            (déjà assigné)
+          {% endif %}
+        </option>
+      {% endfor %}
+
+    </select>
+
+    
+
+  </div>
+
+  
+
+</div>
+  
+ <!-- ================= CHANGER ÉTAT ================= -->
+<div class="bg-white rounded-xl border shadow-sm p-6 space-y-4">
+
+  <div class="flex items-center gap-3">
+  <div class="w-8 h-8 rounded-lg bg-blue-100 text-blue-600
+              flex items-center justify-center">
+    {% icon "settings" cls="h-4 w-4" %}
+  </div>
+  <h3 class="text-base font-semibold text-gray-800">
+Réglages techniques  </h3>
+</div>
+  <!-- Badge dynamique -->
+  <div class="flex justify-between items-center border rounded-lg p-4">
+    <span class="text-sm text-gray-600">État sélectionné</span>
+    <span id="selectedStatusBadge"
+      class="px-3 py-1 rounded-full text-sm
+      {% if machine.status == 'Prete' %}bg-green-100 text-green-700
+      {% elif machine.status == 'Maintenance' %}bg-blue-100 text-blue-700
+      {% elif machine.status == 'Hors Service' %}bg-red-100 text-red-700
+      {% elif machine.status == 'Reserve' %}bg-yellow-100 text-yellow-700
+      {% endif %}">
+      {{ machine.status }}
+    </span>
+  </div>
+
+  <!-- Choix -->
+  <div class="bg-gray-50 p-4 rounded-lg border space-y-3">
+    {% for key,label in enumerated_status %}
+    <label class="status-card flex gap-3 p-4 rounded-lg border cursor-pointer bg-white">
+      <input type="radio" name="status" value="{{ key }}"
+             {% if machine.status == key %}checked{% endif %}>
+      <div>
+        <div class="font-medium">{{ label }}</div>
+        <p class="text-sm text-gray-600">
+          {% if key == "Prete" %}Machine prête
+          {% elif key == "Maintenance" %}Maintenance en cours
+          {% elif key == "Hors Service" %}Erreur détectée
+          {% elif key == "Reserve" %}Machine réservée
+          {% endif %}
+        </p>
+      </div>
+    </label>
+    {% endfor %}
+
+    <div id="statusInfo" class="hidden p-3 rounded-lg text-sm border"></div>
+  </div>
+</div>
+
+
+
+    <!-- ================= ACTIONS ================= -->
+    <div class="flex gap-3 pt-4">
+      <a href="{% url 'machines:machines' %}"
+         class="flex-1 text-center border rounded-lg py-3">
+        Annuler
+      </a>
+      <button type="submit"
+        class="flex-1 bg-blue-600 text-white rounded-lg py-3 hover:bg-blue-700">
+        Valider configuration
+      </button>
+    </div>
+
+  </form>
+</div>
+
+<!-- ================= JS ================= -->
+<script>
+(function(){
+  const cards = document.querySelectorAll(".status-card");
+  const badge = document.getElementById("selectedStatusBadge");
+  const infoBox = document.getElementById("statusInfo");
+
+  function resetCards(){
+    cards.forEach(card=>{
+      card.classList.remove(
+        "bg-green-50","border-green-400","border-2",
+        "bg-blue-50","border-blue-400",
+        "bg-red-50","border-red-400",
+        "bg-yellow-50","border-yellow-400"
+      );
+      card.classList.add("bg-white","border");
+    });
+  }
+
+  function activate(card, status){
+    resetCards();
+
+    // IMPORTANT : enlever bg-white
+    card.classList.remove("bg-white");
+
+    badge.textContent = status;
+
+    if(status === "Prete"){
+      card.classList.add("bg-green-50","border-2","border-green-400");
+      badge.className =
+        "px-3 py-1 rounded-full text-sm bg-green-100 text-green-700";
+      infoBox.classList.add("hidden");
+    }
+    else if(status === "Maintenance"){
+      card.classList.add("bg-blue-50","border-2","border-blue-400");
+      badge.className =
+        "px-3 py-1 rounded-full text-sm bg-blue-100 text-blue-700";
+      infoBox.className =
+        "p-3 rounded-lg text-sm border bg-blue-50 border-blue-400 text-blue-700";
+      infoBox.innerHTML = "<b>Machine temporairement indisponible</b>";
+      infoBox.classList.remove("hidden");
+    }
+    else if(status === "Hors Service"){
+      card.classList.add("bg-red-50","border-2","border-red-400");
+      badge.className =
+        "px-3 py-1 rounded-full text-sm bg-red-100 text-red-700";
+      infoBox.className =
+        "p-3 rounded-lg text-sm border bg-red-50 border-red-400 text-red-700";
+      infoBox.innerHTML = "<b>Intervention requise immédiatement</b>";
+      infoBox.classList.remove("hidden");
+    }
+    else if(status === "Reserve"){
+      card.classList.add("bg-yellow-50","border-2","border-yellow-400");
+      badge.className =
+        "px-3 py-1 rounded-full text-sm bg-yellow-100 text-yellow-700";
+      infoBox.classList.add("hidden");
+    }
+  }
+
+  cards.forEach(card=>{
+    const radio = card.querySelector("input");
+    if(radio.checked) activate(card, radio.value);
+    radio.addEventListener("change", ()=> activate(card, radio.value));
+  });
+})();
+</script>
+
+
+{% endblock %}
