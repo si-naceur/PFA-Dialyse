@@ -12,13 +12,19 @@ app = FastAPI()
 import os
 
 token = os.getenv("HF_TOKEN")
+
 MODEL_NAME = "Qwen/Qwen3.5-35B-A3B:novita"
 HF_API_URL = "https://router.huggingface.co/v1"
 
-client = AsyncOpenAI(
-    base_url=HF_API_URL,
-    api_key=HF_TOKEN
-)
+client = None
+
+if token:
+    client = AsyncOpenAI(
+        base_url=HF_API_URL,
+        api_key=token
+    )
+else:
+    print("[INFO] No HF_TOKEN found → using fallback mode")
 
 # ===================== FALLBACK ALÉATOIRE =====================
 def generate_random_values() -> dict:
@@ -39,10 +45,9 @@ def generate_random_values() -> dict:
 
 # ===================== TEST CONNECTIVITÉ MODÈLE =====================
 async def model_is_available() -> bool:
-    """
-    Envoie un message texte minimaliste pour vérifier que le modèle répond.
-    Retourne True si OK, False sinon.
-    """
+    if client is None:
+        return False
+
     try:
         response = await client.chat.completions.create(
             model=MODEL_NAME,
