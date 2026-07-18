@@ -26,9 +26,8 @@ urlpatterns = [
     path('monitoring/', include('monitoring.urls')),
     path('patients/', include('patients.urls')),
     path('seances/', include('seances.urls')),
-    path('machines/',include('machines.urls')),
-    path('api/', include('api.urls')),
-    
+    path('machines/', include('machines.urls')),
+path('api/', include('api.urls')),
 ]
 
 if settings.DEBUG:

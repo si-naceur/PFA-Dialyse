@@ -3,7 +3,9 @@ import time
 
 # ===================== CONFIG =====================
 LOCAL_AI_API  = "http://127.0.0.1:8001/analyze/"
-DJANGO_API    = "http://127.0.0.1:8000/api/push/"
+DJANGO_SAVE_API = "http://127.0.0.1:8000/api/monitoring/save/"
+
+DJANGO_API = "http://127.0.0.1:8000/monitoring/push/"
 DEBIT_API     = "http://127.0.0.1:8000/api/seance/debit/"
 HEARTBEAT_URL = "http://127.0.0.1:8000/machines/raspi/heartbeat/"
 
@@ -126,6 +128,7 @@ if __name__ == "__main__":
 
         # 3. Capturer et analyser l'image
         ai_values = analyze_image(IMAGE_PATH)
+        
 
         # 4. Envoyer les résultats à Django
         if ai_values:

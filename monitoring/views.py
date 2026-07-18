@@ -96,30 +96,59 @@ def surveillance_view(request):
     return render(request, "surveillance.html", {"current_user": current_user ,"sessions": active_sessions})
 
 @csrf_exempt
-def push_measurements(request):
-    data = json.loads(request.body)
+def push_measurement(request):
 
-    machine_id = data["machine_id"]
-
-    seance = Seance.objects.filter(
-        machine__machine_id=machine_id,
-        status="en cours"
-    ).first()
-
-    if not seance:
-        return JsonResponse({"error": "No active session"}, status=404)
-
-    for m in data["measurements"]:
-        LiveMeasurement.objects.create(
-            seance=seance,
-            timestamp=timezone.now(),
-            Debit_sang=m.get("Debit_sang"),
-            Taux_UF=m.get("Taux_UF"),
-            PA=m.get("PA"),
-            PTM=m.get("PTM"),
-            PV=m.get("PV"),
-            Volume_UF=m.get("Volume_UF"),
-            Heparine=m.get("Heparine")
+    if request.method != "POST":
+        return JsonResponse(
+            {"error": "POST required"},
+            status=405
         )
 
-    return JsonResponse({"status": "ok"})
+    try:
+        data = json.loads(request.body)
+
+        machine_id = data.get("machine_id")
+
+        machine = Machine.objects.get(
+            machine_id=machine_id
+        )
+
+        seance = Seance.objects.filter(
+            machine=machine,
+            status="En cours"
+        ).first()
+
+        if not seance:
+            return JsonResponse({
+                "error": "No active seance for this machine"
+            }, status=400)
+
+
+        measurement = LiveMeasurement.objects.create(
+            seance=seance,
+            Debit_sang=data.get("Qb"),
+            Taux_UF=data.get("UF_rate"),
+            PA=data.get("PA"),
+            PTM=data.get("PTM"),
+            PV=data.get("PV"),
+            Volume_UF=data.get("UF_volume"),
+            Heparine=data.get("Heparin"),
+        )
+
+
+        return JsonResponse({
+            "success": True,
+            "id": str(measurement.id)
+        })
+
+
+    except Machine.DoesNotExist:
+        return JsonResponse({
+            "error": "Machine not found"
+        }, status=404)
+
+
+    except Exception as e:
+        return JsonResponse({
+            "error": str(e)
+        }, status=500)
