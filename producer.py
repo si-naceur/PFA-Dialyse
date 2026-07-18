@@ -8,7 +8,7 @@ DEBIT_API     = "http://127.0.0.1:8000/api/seance/debit/"
 HEARTBEAT_URL = "http://127.0.0.1:8000/machines/raspi/heartbeat/"
 
 RASPI_ID      = "RASPI-02"   # ← identifiant unique de ce Raspi, codé en dur une seule fois
-IMAGE_PATH    = r"C:\Users\MSI\Desktop\PFA\frame.jpg"
+IMAGE_PATH = "frame.jpg"
 DEFAULT_DEBIT = 60
 
 # Machine assignée — récupérée dynamiquement via heartbeat, pas codée en dur
