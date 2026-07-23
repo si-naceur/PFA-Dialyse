@@ -1,7 +1,5 @@
 
 from datetime import date
-from pyexpat.errors import messages
-from xml.parsers.expat import errors
 from django.http import HttpResponse
 from django.shortcuts import redirect, render, get_object_or_404
 from django.db.models import Q
@@ -12,7 +10,7 @@ from seances.models import PostSessionMeasurements, PreSessionMeasurements, Rapp
 from django.core.paginator import Paginator
 import json
 import datetime
-
+from django.contrib import messages
 
 
 def calculate_age(dob_str):
@@ -45,43 +43,39 @@ def patient(request):
 
 @app_login_required
 @role_required("Admin", "Docteur","Infirmier", redirect_to="accounts:error")
+@app_login_required
+@role_required("Admin", "Docteur", "Infirmier", redirect_to="accounts:error")
 def add_patient(request):
+
     if request.method != "POST":
         return redirect("patients:patient")
-    old = request.POST
-    errors = {}
-    FirstName = request.POST.get("FirstName").strip()
-    LastName = request.POST.get("LastName").strip()
-    dateOfBirth = request.POST.get("dateOfBirth")
-    contact_urgence = request.POST.get("contacturgences").strip()
-    address = request.POST.get("address").strip()
-    telephone = request.POST.get("phone").strip()
-    antecedents_medicaux = request.POST.get("medicalhistory").strip()
-    group_sanguin = request.POST.get("groupSanguin", "A+")
-        
-    Patient.objects.using("mongodb").create(
-            first_name=FirstName,
-            last_name=LastName,
-            date_of_birth=dateOfBirth,
-            contact_urgence=contact_urgence,
-            adresse=address,
-            telephone=telephone,
-            antecedents_med=antecedents_medicaux,
-            age=calculate_age(dateOfBirth),
-            group_sanguin=group_sanguin,
-        )
-    if errors:
-        patients = Patient.objects.all().order_by("-created_at")
-        return render(request, "patient.html", {
-            "patients": patients,
-            "q": "",
-            "errors": errors,
-            "old": old,
-            "open_modal": True,
-        })
-    messages.success(request, "Patient ajouté avec succès !")
-    return redirect("patients:patient")
 
+    FirstName = request.POST.get("FirstName", "").strip()
+    LastName = request.POST.get("LastName", "").strip()
+    dateOfBirth = request.POST.get("dateOfBirth")
+
+    contact_urgence = request.POST.get("contacturgences", "").strip()
+    address = request.POST.get("address", "").strip()
+    telephone = request.POST.get("phone", "").strip()
+    antecedents_medicaux = request.POST.get("medicalhistory", "").strip()
+    groupe_sanguin = request.POST.get("groupSanguin", "A+")
+
+    patient = Patient.objects.using("mongodb").create(
+        first_name=FirstName,
+        last_name=LastName,
+        date_of_birth=dateOfBirth,
+        age=calculate_age(dateOfBirth),
+        groupe_sanguin=groupe_sanguin,
+        type_de_dialyse="Hémodialyse",
+        adresse=address,
+        telephone=telephone,
+        contact_urgence=contact_urgence,
+        antecedents_medicaux=antecedents_medicaux,
+    )
+
+    messages.success(request, "Patient ajouté avec succès !")
+
+    return redirect("patients:patient")
 @app_login_required
 @role_required("Admin", "Docteur","Infirmier", redirect_to="accounts:error")
 def patient_profile(request, id):
