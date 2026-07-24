@@ -32,34 +32,6 @@ class VitalReading(models.Model):
 
 
 
-class Alerte(models.Model):
-
-    id = models.UUIDField(
-        primary_key=True,
-        default=uuid.uuid4,
-        editable=False
-    )
-
-    reading = models.ForeignKey(
-        VitalReading,
-        on_delete=models.CASCADE,
-        related_name="alertes"
-    )
-
-    niveau = models.CharField(
-        max_length=20
-    )
-
-    message = models.TextField()
-
-    timestamp = models.DateTimeField(
-        auto_now_add=True
-    )
-
-
-    class Meta:
-        db_table = "alertes"
-
 
 
 class ConversationLog(models.Model):
@@ -113,3 +85,29 @@ class LiveMeasurement(models.Model):
 
     class Meta:
         db_table = "live_measurements"
+class Alerte(models.Model):
+
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False
+    )
+
+    reading = models.ForeignKey(
+        LiveMeasurement,
+        on_delete=models.CASCADE,
+        related_name="alertes"
+    )
+
+    niveau = models.CharField(
+        max_length=20
+    )
+
+    message = models.TextField()
+
+    timestamp = models.DateTimeField(
+        auto_now_add=True
+    )
+
+    class Meta:
+        db_table = "alertes"

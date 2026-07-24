@@ -9,8 +9,10 @@ from django.utils import timezone
 from datetime import timedelta
 from django.views.decorators.csrf import csrf_exempt
 from machines.models import Machine
-from monitoring.models import LiveMeasurement
 from seances.models import Seance
+from monitoring.models import LiveMeasurement, Alerte
+from monitoring.services import check_thresholds
+
 def ia_conseil(request):
     return JsonResponse({"message": "Test ia_conseil"})
 
@@ -91,10 +93,71 @@ def dashboard(request):
 @role_required("Admin", "Docteur", "Infirmier", redirect_to="accounts:error")
 def surveillance_view(request):
     current_user = request.current_user
-    active_sessions = Seance.objects.filter(status="en cours") \
+    active_sessions = Seance.objects.filter(status="En cours") \
           .select_related("patient", "machine")
     return render(request, "surveillance.html", {"current_user": current_user ,"sessions": active_sessions})
+from django.http import JsonResponse
+from django.utils import timezone
 
+
+def live_data(request):
+
+    sessions = []
+
+    active_seances = Seance.objects.filter(
+        status="En cours"
+    ).select_related(
+        "patient",
+        "machine"
+    )
+
+
+    for seance in active_seances:
+
+        last = LiveMeasurement.objects.filter(
+            seance=seance
+        ).order_by(
+            "-timestamp"
+        ).first()
+
+
+        if last:
+
+            sessions.append({
+                "patient": str(seance.patient),
+                "machine": str(seance.machine),
+
+                "Qb": last.Debit_sang,
+                "PA": last.PA,
+                "PTM": last.PTM,
+                "PV": last.PV,
+                "UF": last.Volume_UF,
+
+                "time": last.timestamp.isoformat()
+            })
+
+
+    alerts = []
+
+    last_alerts = Alerte.objects.all().order_by(
+        "-timestamp"
+    )[:20]
+
+
+    for alert in last_alerts:
+
+        alerts.append({
+            "niveau": alert.niveau,
+            "message": alert.message,
+            "time": alert.timestamp.isoformat()
+        })
+
+
+    return JsonResponse({
+        "sessions": sessions,
+        "alerts": alerts,
+        "last_update": timezone.now()
+    })
 @csrf_exempt
 def push_measurement(request):
 
@@ -134,12 +197,33 @@ def push_measurement(request):
             Volume_UF=data.get("UF_volume"),
             Heparine=data.get("Heparin"),
         )
+        from monitoring.services import check_thresholds
+        from monitoring.models import Alerte
+        alerts = check_thresholds(measurement)
+
+        for niveau, message in alerts:
+
+            exists = Alerte.objects.filter(
+                reading__seance=seance,
+                niveau=niveau,
+                message=message,
+                timestamp__gte=timezone.now()-timedelta(minutes=5)
+            ).exists()
+
+
+            if not exists:
+                Alerte.objects.create(
+                    reading=measurement,
+                    niveau=niveau,
+                    message=message
+                )
 
 
         return JsonResponse({
-            "success": True,
-            "id": str(measurement.id)
-        })
+    "success": True,
+    "id": str(measurement.id),
+    "alerts_created": len(alerts)
+})
 
 
     except Machine.DoesNotExist:

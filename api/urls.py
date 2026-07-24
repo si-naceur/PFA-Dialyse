@@ -13,7 +13,6 @@ urlpatterns = [
         name="push_measurement"
     ),
 
-
     path(
         "real-monitoring/",
         views.real_monitoring,
