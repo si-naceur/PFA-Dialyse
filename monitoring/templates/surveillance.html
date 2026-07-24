@@ -2,19 +2,15 @@
 {% load static %}
 {% load icons %}
 
-
 {% block title %}
 Surveillance en temps réel
 {% endblock %}
 
-
 {% block content %}
-
 
 <div class="space-y-6">
 
-
-<!-- HEADER -->
+<!-- ================= HEADER ================= -->
 
 <div class="flex items-center justify-between">
 
@@ -24,342 +20,234 @@ Surveillance en temps réel
             Surveillance en Temps Réel
         </h2>
 
-
-        <p id="last-update"
-           class="text-sm text-gray-600 mt-1">
+        <p
+            id="last-update"
+            class="text-sm text-gray-500 mt-1">
 
             Dernière mise à jour : --
 
         </p>
 
-
     </div>
 
-
-
-    <div class="flex items-center gap-2 
-                bg-green-50 
-                border 
-                border-green-200 
-                rounded-lg 
-                px-4 
-                py-2">
-
+    <div class="
+        flex
+        items-center
+        gap-2
+        bg-green-50
+        border
+        border-green-300
+        rounded-xl
+        px-4
+        py-2">
 
         <div class="
-            w-2 
-            h-2 
-            bg-green-500 
-            rounded-full 
+            w-3
+            h-3
+            rounded-full
+            bg-green-500
             animate-pulse">
         </div>
 
-
-        <span class="text-sm text-green-700">
+        <span class="font-semibold text-green-700">
 
             Connexion active
 
         </span>
 
-
     </div>
 
+</div>
+
+<!-- ================= KPIs ================= -->
+
+<div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-5">
+
+<div class="bg-white rounded-xl shadow border p-5">
+
+    <p class="text-gray-500 text-sm">
+        Sessions actives
+    </p>
+
+    <h2
+        id="sessions-count"
+        class="text-3xl font-bold mt-2">
+
+        0
+
+    </h2>
 
 </div>
 
+<div class="bg-white rounded-xl shadow border p-5">
 
+    <p class="text-gray-500 text-sm">
+        Machines
+    </p>
 
+    <h2
+        id="machines-count"
+        class="text-3xl font-bold mt-2">
 
+        0
 
-<!-- SUMMARY -->
-
-
-<div class="
-grid 
-grid-cols-1 
-sm:grid-cols-2 
-lg:grid-cols-5 
-gap-4">
-
-
-<div class="
-bg-white 
-rounded-xl 
-shadow 
-border 
-p-4">
-
-
-<h3 class="text-sm text-gray-600">
-
-Sessions actives
-
-</h3>
-
-
-<div id="sessions-count"
-     class="text-3xl font-bold">
-
-0
+    </h2>
 
 </div>
 
+<div class="bg-white rounded-xl shadow border p-5">
+
+    <p class="text-gray-500 text-sm">
+        Alertes critiques
+    </p>
+
+    <h2
+        id="critical-alerts"
+        class="text-3xl font-bold text-red-600 mt-2">
+
+        0
+
+    </h2>
 
 </div>
 
+<div class="bg-white rounded-xl shadow border p-5">
 
+    <p class="text-gray-500 text-sm">
+        Avertissements
+    </p>
 
+    <h2
+        id="warning-alerts"
+        class="text-3xl font-bold text-yellow-500 mt-2">
 
+        0
 
-<div class="
-bg-white 
-rounded-xl 
-shadow 
-border 
-p-4">
-
-
-<h3 class="text-sm text-gray-600">
-
-Machines
-
-</h3>
-
-
-<div id="machines-count"
-     class="text-3xl font-bold">
-
-0
+    </h2>
 
 </div>
 
+<div class="bg-white rounded-xl shadow border p-5">
+
+    <p class="text-gray-500 text-sm">
+        Patients stables
+    </p>
+
+    <h2
+        id="stable-patients"
+        class="text-3xl font-bold text-green-600 mt-2">
+
+        0
+
+    </h2>
 
 </div>
 
-
-
-
-
-<div class="
-bg-white 
-rounded-xl 
-shadow 
-border 
-p-4">
-
-
-<h3 class="text-sm text-gray-600">
-
-Alertes critiques
-
-</h3>
-
-
-<div id="critical-alerts"
-class="text-3xl text-red-600">
-
-0
-
 </div>
 
+<!-- ================= CONTENT ================= -->
 
-</div>
+<div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
 
+<!-- LEFT -->
 
+<div class="xl:col-span-2">
 
-
-
-<div class="
-bg-white 
-rounded-xl 
-shadow 
-border 
-p-4">
-
-
-<h3 class="text-sm text-gray-600">
-
-Avertissements
-
-</h3>
-
-
-<div id="warning-alerts"
-class="text-3xl text-yellow-600">
-
-0
-
-</div>
-
-
-</div>
-
-
-
-
-
-<div class="
-bg-white 
-rounded-xl 
-shadow 
-border 
-p-4">
-
-
-<h3 class="text-sm text-gray-600">
-
-Patients stables
-
-</h3>
-
-
-<div id="stable-patients"
-class="text-3xl text-green-600">
-
-0
-
-</div>
-
-
-</div>
-
-
-</div>
-
-
-
-
-
-
-<!-- CONTENT -->
-
-
-<div class="
-grid 
-grid-cols-1 
-lg:grid-cols-3 
-gap-6">
-
-
-<div class="lg:col-span-2">
-
-
-<h3 class="text-lg font-bold mb-4">
+<h2 class="font-bold text-xl mb-4">
 
 Patients en surveillance
 
-</h3>
+</h2>
 
-
-
-<div id="sessions-container"
-class="
-grid 
-grid-cols-1 
-xl:grid-cols-2 
-gap-4">
-
+<div
+    id="sessions-container"
+    class="grid grid-cols-1 lg:grid-cols-2 gap-5">
 
 </div>
 
-
-
 </div>
 
-
-
-
+<!-- RIGHT -->
 
 <div>
 
+<div class="flex items-center justify-between mb-4">
 
-<h3 class="text-lg font-bold mb-4">
+<h2 class="font-bold text-xl">
 
 Alertes
 
-</h3>
+</h2>
 
+<button
+    id="stopAlarm"
+    class="
+    bg-red-600
+    text-white
+    px-4
+    py-2
+    rounded-lg
+    hover:bg-red-700">
 
-<div id="alerts-container">
+🔇 Stop Alarme
+
+</button>
 
 </div>
 
+<div
+    id="alerts-container"
+    class="space-y-4">
 
 </div>
 
-
+</div>
 
 </div>
 
+</div>
 
+<script>
 
-</div><script>
+let previousAlerts = new Set();
 
+let alarm =
+new Audio("{% static 'sounds/alert.mp3' %}");
+
+alarm.loop = true;
+
+let alarmPlaying = false;
+// ===============================
+// LOAD LIVE DATA
+// ===============================
 
 function loadLiveData(){
 
-
     fetch("/monitoring/live-data/")
-    
-    .then(response => {
+
+    .then(response => response.json())
+
+    .then(data => {
 
 
-        if(!response.ok){
-
-            throw new Error(
-                "Erreur API : " + response.status
-            );
-
-        }
-
-
-        return response.json();
-
-
-    })
-
-
-    .then(data=>{
-        if(data.alerts.length > 0){
-
-    let lastAlert = data.alerts[0];
-
-    if(lastAlert.niveau === "HIGH"){
-
-        const audio = new Audio(
-            "{% static 'sounds/alert.mp3' %}"
-        );
-
-        audio.play()
-        .catch(error => console.log(error));
-
-    }
-}
-
-
-        console.log("LIVE DATA:",data);
+        console.log("LIVE:", data);
 
 
 
-        const sessions = data.sessions || [];
+        let sessions = data.sessions || [];
+
+        let alerts = data.alerts || [];
 
 
 
-        // =========================
-        // UPDATE SUMMARY
-        // =========================
+        // ===============================
+        // UPDATE KPI
+        // ===============================
 
 
         document.getElementById(
             "sessions-count"
         ).textContent = sessions.length;
-
-
-
-        document.getElementById(
-            "stable-patients"
-        ).textContent = sessions.length;
-
 
 
         document.getElementById(
@@ -368,60 +256,65 @@ function loadLiveData(){
 
 
 
+        let critical = alerts.filter(
+            a => a.niveau === "HIGH"
+        ).length;
+
+
+        let warning = alerts.filter(
+            a => a.niveau === "MEDIUM"
+        ).length;
+
+
+
         document.getElementById(
             "critical-alerts"
-        ).textContent = 0;
+        ).textContent = critical;
 
 
 
         document.getElementById(
             "warning-alerts"
-        ).textContent = 0;
+        ).textContent = warning;
 
 
 
+        document.getElementById(
+            "stable-patients"
+        ).textContent =
+        sessions.length - critical;
 
-
-        // =========================
-        // UPDATE TIME
-        // =========================
 
 
         document.getElementById(
             "last-update"
         ).textContent =
-
         "Dernière mise à jour : "
         +
-
-        new Date()
-        .toLocaleTimeString();
+        new Date().toLocaleTimeString();
 
 
 
 
+        // ===============================
+        // DISPLAY SESSIONS
+        // ===============================
 
-        // =========================
-        // UPDATE CARDS
-        // =========================
 
-
-        const container =
+        let sessionContainer =
         document.getElementById(
             "sessions-container"
         );
 
 
-
-        container.innerHTML="";
-
+        sessionContainer.innerHTML="";
 
 
 
-        if(sessions.length===0){
+        if(sessions.length === 0){
 
 
-            container.innerHTML = `
+            sessionContainer.innerHTML = `
 
             <div class="
             bg-white
@@ -436,48 +329,40 @@ function loadLiveData(){
             `;
 
 
-            return;
-
         }
-
-
-
-
 
 
         sessions.forEach(session=>{
 
 
-            container.innerHTML += `
-
+            sessionContainer.innerHTML += `
 
             <div class="
             bg-white
-            shadow
-            rounded-xl
             border
+            rounded-xl
+            shadow
             p-5">
 
 
-                <h2 class="
-                font-bold
+                <h3 class="
                 text-lg
-                mb-2">
+                font-bold
+                mb-3">
 
                 Patient :
                 ${session.patient}
 
-                </h2>
+                </h3>
 
 
 
                 <p>
-
                 Machine :
-                <b>${session.machine}</b>
-
+                <b>
+                ${session.machine}
+                </b>
                 </p>
-
 
 
                 <hr class="my-3">
@@ -488,72 +373,55 @@ function loadLiveData(){
 
 
                     <p>
-
                     Débit sang :
-
                     <b>
-                    ${session.Qb}
-                    mL/min
+                    ${session.Qb ?? "--"}
+                    ml/min
                     </b>
-
                     </p>
 
 
 
                     <p>
-
                     PA :
-
                     <b>
-                    ${session.PA}
+                    ${session.PA ?? "--"}
                     mmHg
                     </b>
-
                     </p>
 
 
 
                     <p>
-
                     PTM :
-
                     <b>
-                    ${session.PTM}
+                    ${session.PTM ?? "--"}
                     mmHg
                     </b>
-
                     </p>
 
 
 
                     <p>
-
                     PV :
-
                     <b>
-                    ${session.PV}
+                    ${session.PV ?? "--"}
                     mmHg
                     </b>
-
                     </p>
 
 
 
                     <p>
-
                     Volume UF :
-
                     <b>
-                    ${session.UF}
-                    mL
+                    ${session.UF ?? "--"}
+                    ml
                     </b>
-
                     </p>
-
 
 
                 </div>
-
 
 
             </div>
@@ -563,82 +431,127 @@ function loadLiveData(){
 
 
         });
-        // ==========================
-// DISPLAY ALERTS
-// ==========================
-
-const alertsContainer = document.getElementById(
-    "alerts-container"
-);
-
-alertsContainer.innerHTML = "";
 
 
-data.alerts.forEach(alert => {
-
-    notifyAlert(alert);
-    let color = "border-yellow-300 bg-yellow-50";
-    let textColor = "text-yellow-700";
 
 
-    if(alert.niveau === "HIGH"){
-        color = "border-red-300 bg-red-50";
-        textColor = "text-red-700";
-    }
+
+        // ===============================
+        // DISPLAY ALERTS
+        // ===============================
 
 
-    alertsContainer.innerHTML += `
-
-    <div class="
-        border-2 ${color}
-        rounded-xl
-        p-4
-        mb-3
-    ">
-
-        <div class="flex justify-between">
-
-            <span class="
-                font-bold
-                ${textColor}
-            ">
-                ${alert.niveau}
-            </span>
+        let alertContainer =
+        document.getElementById(
+            "alerts-container"
+        );
 
 
-            <span class="text-xs text-gray-500">
-                ${new Date(alert.time)
-                    .toLocaleTimeString()}
-            </span>
-
-        </div>
+        alertContainer.innerHTML="";
 
 
-        <p class="mt-2 text-sm">
-            ${alert.message}
-        </p>
+
+        alerts.forEach(alert=>{
 
 
-        <button
-        class="
-        mt-3
-        px-3
-        py-1
-        text-xs
-        bg-white
-        border
-        rounded
-        ">
-            Acquitter
-        </button>
+            notifyAlert(alert);
 
 
-    </div>
 
-    `;
+            let color =
+            "border-yellow-300 bg-yellow-50";
 
 
-});
+            let text =
+            "text-yellow-700";
+
+
+
+            if(alert.niveau === "HIGH"){
+
+
+                color =
+                "border-red-400 bg-red-50";
+
+
+                text =
+                "text-red-700";
+
+
+            }
+
+
+
+            alertContainer.innerHTML += `
+
+
+            <div class="
+            ${color}
+            border-2
+            rounded-xl
+            p-4">
+
+
+                <div class="
+                flex
+                justify-between">
+
+
+                    <b class="${text}">
+                    ${alert.niveau}
+                    </b>
+
+
+
+                    <span class="
+                    text-xs
+                    text-gray-500">
+
+                    ${
+                    new Date(
+                    alert.time
+                    )
+                    .toLocaleTimeString()
+                    }
+
+                    </span>
+
+
+                </div>
+
+
+
+                <p class="mt-2">
+
+                ${alert.message}
+
+                </p>
+
+
+
+                <button
+                onclick="acquitAlert(this)"
+                class="
+                mt-3
+                px-3
+                py-1
+                rounded
+                bg-white
+                border">
+
+                Acquitter
+
+                </button>
+
+
+            </div>
+
+
+            `;
+
+
+        });
+
 
 
     })
@@ -649,7 +562,7 @@ data.alerts.forEach(alert => {
 
 
         console.log(
-            "LIVE DATA ERROR:",
+            "Erreur live:",
             error
         );
 
@@ -657,43 +570,27 @@ data.alerts.forEach(alert => {
     });
 
 
-
 }
-
-
-
-
-
-
-// premier chargement
-
-loadLiveData();
-
-
-
-// refresh automatique
-
-setInterval(
-    loadLiveData,
-    3000
-);
-
 // ===============================
-// ALERT NOTIFICATION SYSTEM
+// ALERT SYSTEM
 // ===============================
-
-let previousAlerts = new Set();
 
 
 function notifyAlert(alert){
 
 
-    const key = alert.niveau + alert.message + alert.time;
+    const key =
+    alert.niveau +
+    alert.message +
+    alert.time;
 
 
-    // منع التكرار
+
+    // منع تكرار نفس التنبيه
     if(previousAlerts.has(key)){
+
         return;
+
     }
 
 
@@ -701,53 +598,48 @@ function notifyAlert(alert){
 
 
 
-    // HIGH ALERT
+
     if(alert.niveau === "HIGH"){
 
 
-        // صوت
-        const audio = new Audio(
-            "{% static 'sounds/alert.mp3' %}"
-        );
-
-        audio.play()
-        .catch(()=>{});
+        startAlarm();
 
 
-        // Popup
-        alertBox(
+
+        showPopup(
             "🚨 Alerte critique",
             alert.message,
             "red"
         );
 
+
     }
 
 
 
-    // MEDIUM
     else if(alert.niveau === "MEDIUM"){
 
 
-        alertBox(
+        showPopup(
             "⚠️ Attention",
             alert.message,
             "yellow"
         );
 
+
     }
 
 
 
-    // LOW
     else{
 
 
-        alertBox(
+        showPopup(
             "ℹ️ Information",
             alert.message,
             "blue"
         );
+
 
     }
 
@@ -757,42 +649,157 @@ function notifyAlert(alert){
 
 
 
-function alertBox(title,message,color){
 
 
-    const box=document.createElement("div");
+// ===============================
+// START SOUND
+// ===============================
 
 
-    box.className=
-    `
+function startAlarm(){
+
+
+    if(!alarmPlaying){
+
+
+        alarm.play()
+
+        .then(()=>{
+
+
+            alarmPlaying=true;
+
+
+        })
+
+        .catch(error=>{
+
+
+            console.log(
+                "Audio blocked:",
+                error
+            );
+
+
+        });
+
+
+    }
+
+
+}
+
+
+
+
+
+
+// ===============================
+// STOP SOUND BUTTON
+// ===============================
+
+
+document
+.getElementById("stopAlarm")
+.addEventListener(
+"click",
+function(){
+
+
+    alarm.pause();
+
+
+    alarm.currentTime = 0;
+
+
+    alarmPlaying=false;
+
+
+
+});
+
+
+
+
+
+
+
+// ===============================
+// POPUP NOTIFICATION
+// ===============================
+
+
+function showPopup(
+    title,
+    message,
+    color
+){
+
+
+
+    const box =
+    document.createElement(
+        "div"
+    );
+
+
+
+    box.className = `
+
     fixed
+
     top-5
+
     right-5
+
     z-50
+
     bg-white
+
     border-2
+
     border-${color}-500
+
     shadow-xl
+
     rounded-xl
+
     p-5
+
     w-80
+
     `;
 
 
 
-    box.innerHTML=
-    `
+
+    box.innerHTML = `
+
+
     <h3 class="
-        font-bold
-        text-${color}-600
-    ">
+    font-bold
+    text-${color}-600">
+
+
         ${title}
+
+
     </h3>
 
 
-    <p class="text-sm mt-2">
+
+    <p class="
+    mt-2
+    text-sm">
+
+
         ${message}
+
+
     </p>
+
+
+
     `;
 
 
@@ -801,14 +808,87 @@ function alertBox(title,message,color){
 
 
 
+
     setTimeout(()=>{
 
+
         box.remove();
+
 
     },5000);
 
 
+
 }
 
+
+
+
+
+
+
+// ===============================
+// ACQUITTER ALERT
+// ===============================
+
+
+function acquitAlert(button){
+
+
+    let card =
+    button.closest(
+        "div.border-2"
+    );
+
+
+
+    if(card){
+
+
+        card.style.opacity="0.5";
+
+
+        button.textContent =
+        "Acquittée";
+
+
+        button.disabled=true;
+
+
+    }
+
+
+
+}
+
+
+
+
+
+
+
+// ===============================
+// INITIAL LOAD
+// ===============================
+
+
+loadLiveData();
+
+
+
+
+
+
+// Refresh automatique كل 3 ثواني
+
+setInterval(
+    loadLiveData,
+    3000
+);
+
+
+
 </script>
+
+
 {% endblock %}
