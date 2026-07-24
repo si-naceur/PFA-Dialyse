@@ -1,0 +1,240 @@
+import json
+from django.db.models import Q, Prefetch
+from django.http import JsonResponse
+from django.shortcuts import render
+from django.db.models import Q
+from accounts.models import User, UserActivity
+from accounts.decorator import app_login_required, role_required
+from django.utils import timezone
+from datetime import timedelta
+from django.views.decorators.csrf import csrf_exempt
+from machines.models import Machine
+from monitoring.models import LiveMeasurement
+from seances.models import Seance
+def ia_conseil(request):
+    return JsonResponse({"message": "Test ia_conseil"})
+
+@app_login_required
+@role_required("Admin", redirect_to="accounts:error")
+def dashboard(request):
+    current_user = request.current_user
+
+    # KPIs (comme avant)
+    kpi_doctors = User.objects.filter(role__name__in=["Docteur", "Admin"]).count()
+    kpi_nurses = User.objects.filter(role__name__iexact="Infirmier").count()
+    kpi_machines_total = 0
+    kpi_machines_available = 0
+    limit = timezone.now() - timedelta(minutes=5)
+    kpi_active_users = User.objects.filter(etat=True).count()
+
+    # GET params (on garde day et on ajoute q/role/sort)
+    selected_day = (request.GET.get("day") or "").strip()
+    q = (request.GET.get("q") or "").strip()
+    role_filter = (request.GET.get("role") or "").strip()
+    sort = (request.GET.get("sort") or "-login_at").strip()
+    status = (request.GET.get("status") or "").strip()   # <-- AJOUT
+
+    allowed_sorts = {"login_at", "-login_at", "username", "-username"}
+    if sort not in allowed_sorts:
+        sort = "-login_at"
+
+    # Base queryset
+    qs = UserActivity.objects.select_related("user", "user__role")
+
+    # Filtre par date (comme avant)
+    if selected_day:
+        qs = qs.filter(login_at__date=selected_day)
+
+    # Recherche utilisateur (username ou email)
+    if q:
+        qs = qs.filter(
+            Q(user__username__icontains=q) |
+            Q(user__email__icontains=q)
+        )
+
+    # Filtre rôle (liste Docteur/Infirmier)
+    if role_filter in ("Docteur", "Infirmier", "Admin"):
+        qs = qs.filter(user__role__name__iexact=role_filter)
+    
+    
+    if sort in ("username", "-username"):
+        prefix = "-" if sort.startswith("-") else ""
+        qs = qs.order_by(f"{prefix}user__username", "-login_at")
+    else:
+        qs = qs.order_by(sort)
+    
+    if status == "ongoing":
+
+        qs = qs.filter(logout_at__isnull=True)
+
+    activity_rows = qs[:50]
+
+    context = {
+        "current_user": current_user,
+        "kpi_doctors": kpi_doctors,
+        "kpi_nurses": kpi_nurses,
+        "kpi_machines_total": kpi_machines_total,
+        "kpi_machines_available": kpi_machines_available,
+        "kpi_active_users": kpi_active_users,
+        "activity_rows": activity_rows,
+        # pour garder les valeurs dans dashboard.html
+        "selected_day": selected_day,
+        "q": q,
+        "role_filter": role_filter,
+        "sort": sort,
+        "status":status,
+    }
+    return render(request, "dashboard.html", context)
+
+
+@app_login_required
+@role_required("Admin", "Docteur", "Infirmier", redirect_to="accounts:error")
+def surveillance_view(request):
+
+    current_user = request.current_user
+
+    active_sessions = Seance.objects.filter(
+        status="En cours"
+    ).select_related(
+        "patient",
+        "machine"
+    )
+
+    sessions_data = []
+
+    for session in active_sessions:
+
+        last_measurement = LiveMeasurement.objects.filter(
+            seance=session
+        ).order_by(
+            "-timestamp"
+        ).first()
+
+        sessions_data.append({
+            "session": session,
+            "measurement": last_measurement
+        })
+
+
+    return render(
+        request,
+        "surveillance.html",
+        {
+            "current_user": current_user,
+            "sessions_data": sessions_data
+        }
+    )
+def live_data(request):
+
+    sessions = Seance.objects.filter(
+        status="En cours"
+    ).select_related(
+        "patient",
+        "machine"
+    ).prefetch_related(
+        Prefetch(
+            "readings",
+            queryset=LiveMeasurement.objects.order_by("-timestamp"),
+            to_attr="last_readings"
+        )
+    )
+
+    data = []
+
+    for session in sessions:
+
+        last_measurement = (
+            session.last_readings[0]
+            if session.last_readings
+            else None
+        )
+
+        data.append({
+
+            "patient": str(session.patient)
+            if session.patient else "Unknown",
+
+            "machine": session.machine.machine_id
+            if session.machine else "No machine",
+
+            "Qb": last_measurement.Debit_sang
+            if last_measurement else 0,
+
+            "PA": last_measurement.PA
+            if last_measurement else 0,
+
+            "PTM": last_measurement.PTM
+            if last_measurement else 0,
+
+            "PV": last_measurement.PV
+            if last_measurement else 0,
+
+            "UF": last_measurement.Volume_UF
+            if last_measurement else 0,
+
+            "time": last_measurement.timestamp
+            if last_measurement else None,
+
+        })
+
+
+    return JsonResponse({
+        "sessions": data
+    })
+@csrf_exempt
+def push_measurement(request):
+
+    if request.method != "POST":
+        return JsonResponse(
+            {"error": "POST required"},
+            status=405
+        )
+
+    try:
+        data = json.loads(request.body)
+
+        machine_id = data.get("machine_id")
+
+        machine = Machine.objects.get(
+            machine_id=machine_id
+        )
+
+        seance = Seance.objects.filter(
+            machine=machine,
+            status="En cours"
+        ).first()
+
+        if not seance:
+            return JsonResponse({
+                "error": "No active seance for this machine"
+            }, status=400)
+
+
+        measurement = LiveMeasurement.objects.create(
+            seance=seance,
+            Debit_sang=data.get("Qb"),
+            Taux_UF=data.get("UF_rate"),
+            PA=data.get("PA"),
+            PTM=data.get("PTM"),
+            PV=data.get("PV"),
+            Volume_UF=data.get("UF_volume"),
+            Heparine=data.get("Heparin"),
+        )
+
+
+        return JsonResponse({
+            "success": True,
+            "id": str(measurement.id)
+        })
+
+
+    except Machine.DoesNotExist:
+        return JsonResponse({
+            "error": "Machine not found"
+        }, status=404)
+
+
+    except Exception as e:
+        return JsonResponse({
+            "error": str(e)
+        }, status=500)
