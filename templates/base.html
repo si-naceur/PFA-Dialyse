@@ -1,0 +1,46 @@
+{% load static %}
+{% if current_user.first_login %}
+<style>
+    .disabled-link {
+        pointer-events: none;
+        opacity: 0.5;
+    }
+</style>
+
+{% endif %}
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{% block title %}Dialyse Manager{% endblock %}</title>
+
+  {# Ton CSS Tailwind compilé (index.css) #}
+  <link rel="stylesheet" href="{% static 'css/styles/globals.css' %}">
+  <link rel="stylesheet" href="{% static 'css/index.css' %}">
+  {% block extra_css %}{% endblock %}
+</head>
+
+<body class="min-h-screen bg-gray-50"
+      {% if current_user.is_authenticated %}user-logged-in{% endif %}>
+
+  
+
+  {% include "partials/navbar.html" %}
+
+  <div class="flex">
+    {% include "partials/sidebar.html" %}
+
+    <main class="flex-1 min-w-0 p-4 lg:p-6 lg:ml-64">
+    {% block content %}{% endblock %}
+  </main>
+  </div>
+
+  {# JS minimal pour toggle sidebar #}
+  <script src="{% static 'js/ui.js' %}" defer></script>
+
+
+  {% block extra_js %}
+  {% endblock %}
+</body>
+</html>
