@@ -88,6 +88,25 @@ def push_measurement(request):
 
 def real_monitoring(request):
 
+    measurements = LiveMeasurement.objects.all().order_by("-timestamp")[:20]
+
+    data = []
+
+    for m in measurements:
+
+        data.append({
+
+            "machine": str(m.seance.machine),
+            "Qb": m.Debit_sang,
+            "PA": m.PA,
+            "PTM": m.PTM,
+            "PV": m.PV,
+            "UF": m.Volume_UF,
+            "time": m.timestamp
+
+        })
+
+
     return JsonResponse({
-        "message":"real monitoring API works"
+        "measurements": data
     })
