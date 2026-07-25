@@ -19,5 +19,9 @@ urlpatterns=[
         views.surveillance_view,
         name="surveillance"
     ),
-
+    path(
+    'live-data/',
+    views.live_data,
+    name="live_data"
+),
 ]
