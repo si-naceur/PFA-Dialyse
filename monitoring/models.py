@@ -105,9 +105,13 @@ class Alerte(models.Model):
 
     message = models.TextField()
 
+
+    status = models.CharField(
+        max_length=10,
+        default="NEW"
+    )
+
+
     timestamp = models.DateTimeField(
         auto_now_add=True
     )
-
-    class Meta:
-        db_table = "alertes"

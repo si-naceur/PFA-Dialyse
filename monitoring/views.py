@@ -147,10 +147,18 @@ def live_data(request):
     for alert in last_alerts:
 
         alerts.append({
-            "niveau": alert.niveau,
-            "message": alert.message,
-            "time": alert.timestamp.isoformat()
-        })
+
+    "id": str(alert.id),
+
+    "niveau": alert.niveau,
+
+    "message": alert.message,
+
+    "status": alert.status,
+
+    "time": alert.timestamp
+
+})
 
 
     return JsonResponse({
@@ -236,3 +244,25 @@ def push_measurement(request):
         return JsonResponse({
             "error": str(e)
         }, status=500)
+
+
+from django.shortcuts import get_object_or_404
+from django.views.decorators.http import require_POST
+@require_POST
+def ack_alert(request, alert_id):
+
+    alert = get_object_or_404(
+        Alerte,
+        id=alert_id
+    )
+
+
+    alert.status = "ACK"
+
+    alert.save()
+
+
+    return JsonResponse({
+        "success": True,
+        "message": "Alerte acquittée"
+    })

@@ -24,4 +24,9 @@ urlpatterns=[
     views.live_data,
     name="live_data"
 ),
+path(
+    "alert/<uuid:alert_id>/ack/",
+    views.ack_alert,
+    name="ack_alert"
+),
 ]
