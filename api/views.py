@@ -20,11 +20,16 @@ def push_measurement(request):
     try:
         data = json.loads(request.body)
 
+        print("DATA RECEIVED:", data)
+
         machine_id = data.get("machine_id")
+
+        print("MACHINE ID:", repr(machine_id))
 
         machine = Machine.objects.get(
             machine_id=machine_id
         )
+       
 
 
         seance = Seance.objects.filter(
