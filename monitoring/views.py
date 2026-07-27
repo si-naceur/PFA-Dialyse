@@ -315,7 +315,11 @@ def resolve_alert(request, alert_id):
         "success": True,
         "message": "Alerte résolue"
     })
+@app_login_required
+@role_required("Admin", "Docteur", "Infirmier", redirect_to="accounts:error")
 def seances_history(request):
+
+    current_user = request.current_user
 
     seances = Seance.objects.select_related(
         "patient",
@@ -363,9 +367,11 @@ def seances_history(request):
 
 
     return render(
-        request,
-        "seances_history.html",
-        {
-            "seances": seances
-        }
-    )
+    request,
+    "seances_history.html",
+    {
+        "seances": seances,
+        "current_user": current_user
+    }
+)
+   
