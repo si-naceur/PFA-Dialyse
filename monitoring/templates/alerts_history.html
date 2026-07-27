@@ -1,0 +1,225 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<div class="p-6">
+
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+
+        <!-- Header -->
+        <div class="px-6 py-5 border-b border-gray-200">
+            <h2 class="text-2xl font-bold text-gray-800">
+                Historique des alertes
+            </h2>
+
+            <p class="text-sm text-gray-500 mt-1">
+                Suivi des alertes générées pendant les séances de dialyse
+            </p>
+        </div>
+
+
+        <!-- Table -->
+        <div class="overflow-x-auto">
+
+            <table class="w-full text-sm text-left">
+
+                <thead class="bg-gray-50 text-gray-600 uppercase text-xs">
+
+                    <tr>
+                        <th class="px-6 py-4">Heure</th>
+                        <th class="px-6 py-4">Patient</th>
+                        <th class="px-6 py-4">Machine</th>
+                        <th class="px-6 py-4">Niveau</th>
+                        <th class="px-6 py-4">Message</th>
+                        <th class="px-6 py-4">Status</th>
+                        <th class="px-6 py-4">Action</th>
+                    </tr>
+
+                </thead>
+
+
+                <tbody class="divide-y divide-gray-100">
+
+
+                {% for alert in alerts %}
+
+                <tr class="hover:bg-gray-50 transition">
+
+
+                    <td class="px-6 py-4 text-gray-700">
+                        {{ alert.timestamp }}
+                    </td>
+
+
+                    <td class="px-6 py-4 font-medium text-gray-800">
+                        {{ alert.reading.seance.patient }}
+                    </td>
+
+
+                    <td class="px-6 py-4 text-gray-600">
+                        {{ alert.reading.seance.machine }}
+                    </td>
+
+
+                    <td class="px-6 py-4">
+
+                        {% if alert.niveau == "HIGH" %}
+
+                        <span class="px-3 py-1 rounded-full text-xs bg-red-100 text-red-700">
+                            HIGH
+                        </span>
+
+                        {% else %}
+
+                        <span class="px-3 py-1 rounded-full text-xs bg-yellow-100 text-yellow-700">
+                            {{ alert.niveau }}
+                        </span>
+
+                        {% endif %}
+
+                    </td>
+
+
+                    <td class="px-6 py-4 text-gray-600">
+                        {{ alert.message }}
+                    </td>
+
+
+                    <td class="px-6 py-4">
+
+                        {% if alert.status == "NEW" %}
+
+                        <span class="px-3 py-1 rounded-full text-xs bg-orange-100 text-orange-700">
+                            Nouvelle
+                        </span>
+
+
+                        {% elif alert.status == "ACK" %}
+
+                        <span class="px-3 py-1 rounded-full text-xs bg-blue-100 text-blue-700">
+                            Acquittée
+                        </span>
+
+
+                        {% elif alert.status == "RESOLVED" %}
+
+                        <span class="px-3 py-1 rounded-full text-xs bg-green-100 text-green-700">
+                            Résolue
+                        </span>
+
+                        {% endif %}
+
+                    </td>
+
+
+                    <td class="px-6 py-4">
+
+                        {% if alert.status == "NEW" %}
+
+                        <button
+                        onclick="ackAlert('{{ alert.id }}')"
+                        class="px-4 py-2 rounded-lg bg-yellow-500 text-white text-xs hover:bg-yellow-600">
+                            Acquitter
+                        </button>
+
+
+                        {% elif alert.status == "ACK" %}
+
+                        <button
+                        onclick="resolveAlert('{{ alert.id }}')"
+                        class="px-4 py-2 rounded-lg bg-green-600 text-white text-xs hover:bg-green-700">
+                            Résoudre
+                        </button>
+
+                        {% endif %}
+
+                    </td>
+
+
+                </tr>
+
+                {% empty %}
+
+                <tr>
+                    <td colspan="7"
+                    class="px-6 py-6 text-center text-gray-500">
+                        Aucune alerte.
+                    </td>
+                </tr>
+
+
+                {% endfor %}
+
+
+                </tbody>
+
+            </table>
+
+        </div>
+
+    </div>
+
+</div>
+<script>
+
+function resolveAlert(id){
+
+    fetch(
+        `/monitoring/alert/${id}/resolve/`,
+        {
+            method: "POST",
+
+            headers:{
+                "X-CSRFToken": getCookie("csrftoken")
+            }
+        }
+    )
+
+    .then(response => response.json())
+
+    .then(data => {
+
+        console.log("Alert RESOLVED:", data);
+
+        location.reload();
+
+    })
+
+    .catch(error => {
+
+        console.log(error);
+
+    });
+
+}
+
+
+function getCookie(name){
+
+    let cookieValue = null;
+
+    if(document.cookie && document.cookie !== ""){
+
+        const cookies = document.cookie.split(";");
+
+        for(let i = 0; i < cookies.length; i++){
+
+            const cookie = cookies[i].trim();
+
+            if(cookie.substring(0,name.length+1)
+            === (name+"=")){
+
+                cookieValue = decodeURIComponent(
+                    cookie.substring(name.length+1)
+                );
+
+                break;
+            }
+        }
+    }
+
+    return cookieValue;
+}
+
+</script>
+{% endblock %}

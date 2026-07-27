@@ -29,4 +29,20 @@ path(
     views.ack_alert,
     name="ack_alert"
 ),
+path(
+    "alerts-history/",
+    views.alerts_history,
+    name="alerts_history"
+),
+path(
+    "alert/<uuid:alert_id>/resolve/",
+    views.resolve_alert,
+    name="resolve_alert"
+),
+path(
+    "seances/",
+    views.seances_history,
+    name="seances_history"
+),
+
 ]

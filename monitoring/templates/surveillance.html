@@ -931,6 +931,39 @@ function ackAlert(id){
 
 
 }
+function resolveAlert(id){
+
+    fetch(
+        `/monitoring/alert/${id}/resolve/`,
+        {
+            method:"POST",
+
+            headers:{
+                "X-CSRFToken": getCookie("csrftoken")
+            }
+        }
+    )
+
+    .then(response => response.json())
+
+    .then(data=>{
+
+        console.log(
+            "Alert RESOLVED:",
+            data
+        );
+
+        loadLiveData();
+
+    })
+
+    .catch(error=>{
+
+        console.log(error);
+
+    });
+
+}
 function getCookie(name) {
 
     let cookieValue = null;
