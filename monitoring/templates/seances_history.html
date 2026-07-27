@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<div class="p-6">
+
+    <h1 class="text-2xl font-bold mb-6">
+        Historique des séances
+    </h1>
+
+
+    <div class="overflow-x-auto bg-white rounded-xl shadow">
+
+        <table class="min-w-full">
+
+            <thead class="bg-gray-100">
+
+                <tr>
+                    <th class="px-4 py-3">Patient</th>
+                    <th class="px-4 py-3">Machine</th>
+                    <th class="px-4 py-3">Début</th>
+                    <th class="px-4 py-3">Fin</th>
+                    <th class="px-4 py-3">Durée</th>
+                    <th class="px-4 py-3">Alertes</th>
+                    <th class="px-4 py-3">Moyenne PA</th>
+                    <th class="px-4 py-3">Moyenne Qb</th>
+                    <th class="px-4 py-3">Moyenne UF</th>
+                </tr>
+
+            </thead>
+
+
+            <tbody>
+
+            {% for seance in seances %}
+
+                <tr class="border-b">
+
+                    <td class="px-4 py-3">
+                        {{ seance.patient }}
+                    </td>
+
+                    <td class="px-4 py-3">
+                        {{ seance.machine }}
+                    </td>
+
+                    <td class="px-4 py-3">
+                        {{ seance.start_datetime|default:"-" }}
+                    </td>
+
+                    <td class="px-4 py-3">
+                        {{ seance.end_datetime|default:"-" }}
+                    </td>
+
+                    <td class="px-4 py-3">
+                        {{ seance.duration }} h
+                    </td>
+
+                    <td class="px-4 py-3">
+                        {{ seance.nb_alertes }}
+                    </td>
+
+                    <td class="px-4 py-3">
+                        {{ seance.avg_pa|floatformat:2|default:"-" }}
+                    </td>
+
+                    <td class="px-4 py-3">
+                        {{ seance.avg_qb|floatformat:2|default:"-" }}
+                    </td>
+
+                    <td class="px-4 py-3">
+                        {{ seance.avg_uf|floatformat:2|default:"-" }}
+                    </td>
+
+                </tr>
+
+
+            {% empty %}
+
+                <tr>
+                    <td colspan="9" class="text-center py-6">
+                        Aucune séance trouvée
+                    </td>
+                </tr>
+
+            {% endfor %}
+
+
+            </tbody>
+
+        </table>
+
+    </div>
+
+</div>
+
+
+{% endblock %}
