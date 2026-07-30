@@ -6,6 +6,7 @@
   transition-transform duration-300 ease-in-out
   -translate-x-full lg:translate-x-0
 ">
+
   <nav class="p-4 space-y-2">
 
     <!-- ADMIN : TOUT le sidebar -->
@@ -30,6 +31,14 @@
        href="{% url 'monitoring:surveillance' %}">
       {% icon "heart" cls="h-5 w-5 text-gray-500" %} Surveillance
     </a>
+    <a href="{% url 'monitoring:alerts_history' %}"
+     class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-100">
+    
+      {% icon "alert-circle" cls="h-5 w-5 text-red-500" %}
+    
+    <span>Historique des alertes</span>
+
+    </a>
     <a class="w-full flex items-center gap-3 px-4 py-2 rounded-md transition-colors text-gray-700 hover:bg-gray-100
        {% if current_user.first_login %}disabled-link{% endif %}"
        href="{% url 'patients:patient' %}">
@@ -43,13 +52,20 @@
     </a>
     {% endif %}
 
-
+    
     <a class="w-full flex items-center gap-3 px-4 py-2 rounded-md transition-colors text-gray-700 hover:bg-gray-100
        {% if current_user.first_login %}disabled-link{% endif %}"
        href="{% url 'seances:planning' %}">
       {% icon "calendar" cls="h-5 w-5 text-gray-500" %} Séances
     </a>
+    <a href="{% url 'monitoring:seances_history' %}"
+    class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-100">
 
+      {% icon "calendar" cls="h-5 w-5 text-blue-500" %}
+
+      <span>Historique des séances</span>
+
+    </a>
     {% if current_user.role.name == "Admin"  %}
       <a class="w-full flex items-center gap-3 px-4 py-2 rounded-md transition-colors text-gray-700 hover:bg-gray-100
          {% if current_user.first_login %}disabled-link{% endif %}"
@@ -57,6 +73,7 @@
         {% icon "stethoscope" cls="h-5 w-5 text-gray-500" %} Docteurs
       </a>
     {% endif %}
+    
 
     {% if current_user.role.name != "Infirmier" %}
       <a class="w-full flex items-center gap-3 px-4 py-2 rounded-md transition-colors text-gray-700 hover:bg-gray-100

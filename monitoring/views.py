@@ -2,12 +2,16 @@ import json
 
 from django.http import JsonResponse
 from django.shortcuts import render
-from django.db.models import Q
+from django.db.models import Q, Avg, Count
+from django.utils import timezone
+from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_POST
+
+from datetime import datetime, timedelta
+
 from accounts.models import User, UserActivity
 from accounts.decorator import app_login_required, role_required
-from django.utils import timezone
-from datetime import timedelta
-from django.views.decorators.csrf import csrf_exempt
+
 from machines.models import Machine
 from seances.models import Seance
 from monitoring.models import LiveMeasurement, Alerte
@@ -148,10 +152,18 @@ def live_data(request):
     for alert in last_alerts:
 
         alerts.append({
-            "niveau": alert.niveau,
-            "message": alert.message,
-            "time": alert.timestamp.isoformat()
-        })
+
+    "id": str(alert.id),
+
+    "niveau": alert.niveau,
+
+    "message": alert.message,
+
+    "status": alert.status,
+
+    "time": alert.timestamp
+
+})
 
 
     return JsonResponse({
@@ -237,3 +249,130 @@ def push_measurement(request):
         return JsonResponse({
             "error": str(e)
         }, status=500)
+
+
+from django.shortcuts import get_object_or_404
+from django.views.decorators.http import require_POST
+@require_POST
+def ack_alert(request, alert_id):
+
+    alert = get_object_or_404(
+        Alerte,
+        id=alert_id
+    )
+
+
+    alert.status = "ACK"
+
+    alert.save()
+
+
+    return JsonResponse({
+        "success": True,
+        "message": "Alerte acquittée"
+    })
+@app_login_required
+@role_required("Admin", "Docteur", "Infirmier", redirect_to="accounts:error")
+def alerts_history(request):
+
+    current_user = request.current_user
+
+    alerts = (
+        Alerte.objects
+        .select_related(
+            "reading",
+            "reading__seance",
+            "reading__seance__patient",
+            "reading__seance__machine",
+        )
+        .order_by("-timestamp")
+    )
+
+    return render(
+        request,
+        "alerts_history.html",
+        {
+            "current_user": current_user,
+            "alerts": alerts,
+
+            "total_alerts": alerts.count(),
+            "new_alerts": alerts.filter(status="NEW").count(),
+            "ack_alerts": alerts.filter(status="ACK").count(),
+            "resolved_alerts": alerts.filter(status="RESOLVED").count(),
+        },
+    )
+@require_POST
+def resolve_alert(request, alert_id):
+
+    alert = get_object_or_404(
+        Alerte,
+        id=alert_id
+    )
+
+    alert.status = "RESOLVED"
+    alert.save()
+
+    return JsonResponse({
+        "success": True,
+        "message": "Alerte résolue"
+    })
+@app_login_required
+@role_required("Admin", "Docteur", "Infirmier", redirect_to="accounts:error")
+def seances_history(request):
+
+    current_user = request.current_user
+
+    seances = Seance.objects.select_related(
+        "patient",
+        "machine"
+    ).prefetch_related(
+        "readings__alertes"
+    ).all().order_by("-session_date")
+
+
+    for seance in seances:
+
+        readings = seance.readings.all()
+
+        seance.nb_alertes = sum(
+            reading.alertes.count()
+            for reading in readings
+        )
+
+        seance.avg_pa = readings.aggregate(
+            Avg("PA")
+        )["PA__avg"]
+
+        seance.avg_qb = readings.aggregate(
+            Avg("Debit_sang")
+        )["Debit_sang__avg"]
+
+        seance.avg_uf = readings.aggregate(
+            Avg("Taux_UF")
+        )["Taux_UF__avg"]
+
+
+        if seance.session_date and seance.start_hour:
+
+            start = datetime.combine(
+                seance.session_date,
+                seance.start_hour
+            )
+
+            seance.start_datetime = start
+
+            seance.end_datetime = (
+                start +
+                timedelta(hours=seance.duration)
+            )
+
+
+    return render(
+    request,
+    "seances_history.html",
+    {
+        "seances": seances,
+        "current_user": current_user
+    }
+)
+   
