@@ -13,6 +13,7 @@ from seances.models import Seance
 from monitoring.models import LiveMeasurement, Alerte
 from monitoring.services import check_thresholds
 
+
 def ia_conseil(request):
     return JsonResponse({"message": "Test ia_conseil"})
 
@@ -86,7 +87,7 @@ def dashboard(request):
         "sort": sort,
         "status":status,
     }
-    return render(request, "dashboard.html", context)
+    return render(request, "monitoring/dashboard.html", context)
 
 
 @app_login_required
@@ -95,7 +96,7 @@ def surveillance_view(request):
     current_user = request.current_user
     active_sessions = Seance.objects.filter(status="En cours") \
           .select_related("patient", "machine")
-    return render(request, "surveillance.html", {"current_user": current_user ,"sessions": active_sessions})
+        return render(request, "surveillance.html", {"current_user": current_user ,"sessions": active_sessions})
 from django.http import JsonResponse
 from django.utils import timezone
 

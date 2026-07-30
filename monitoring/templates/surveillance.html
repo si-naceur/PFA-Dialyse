@@ -223,7 +223,7 @@ let alarmPlaying = false;
 
 function loadLiveData(){
 
-    fetch("/monitoring/live-data/")
+    fetch("/api/real-monitoring/")
 
     .then(response => response.json())
 

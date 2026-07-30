@@ -1,42 +1,46 @@
+from .models import Alerte
+
+
 def check_thresholds(reading):
 
     alerts = []
 
-    # Pression artérielle
-    if reading.PA is not None:
-        if reading.PA > 180:
-            alerts.append(
-                ("HIGH", "Pression artérielle trop élevée")
-            )
+    if reading.PA > 180:
+        alerts.append(
+            ("RED", "Pression artérielle trop élevée")
+        )
 
-        elif reading.PA < 80:
-            alerts.append(
-                ("HIGH", "Pression artérielle trop basse")
-            )
+    elif reading.PA < 80:
+        alerts.append(
+            ("RED", "Pression artérielle trop basse")
+        )
 
 
-    # Pression veineuse
-    if reading.PV is not None:
-        if reading.PV > 280:
-            alerts.append(
-                ("MEDIUM", "Pression veineuse élevée")
-            )
+    if reading.PV > 250:
+        alerts.append(
+            ("YELLOW", "Pression veineuse élevée")
+        )
 
 
-    # PTM
-    if reading.PTM is not None:
-        if reading.PTM > 250:
-            alerts.append(
-                ("MEDIUM", "PTM élevée")
-            )
+    if reading.PTM > 100:
+        alerts.append(
+            ("YELLOW", "PTM élevée")
+        )
 
 
-    # Débit sang
-    if reading.Debit_sang is not None:
-        if reading.Debit_sang < 200:
-            alerts.append(
-                ("HIGH", "Débit sanguin faible")
-            )
+    if reading.Debit_sang < 200:
+        alerts.append(
+            ("RED", "Débit sanguin faible")
+        )
+
+
+    # Enregistrer les alertes dans la base
+    for niveau, message in alerts:
+        Alerte.objects.create(
+            reading=reading,
+            niveau=niveau,
+            message=message
+        )
 
 
     return alerts

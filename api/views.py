@@ -10,6 +10,7 @@ from monitoring.models import LiveMeasurement
 
 @csrf_exempt
 def push_measurement(request):
+    print("========== PUSH VIEW CALLED ==========")
 
     if request.method != "POST":
         return JsonResponse(
@@ -45,9 +46,13 @@ def push_measurement(request):
                 },
                 status=400
             )
+        from django.conf import settings
+
+        print("DATABASE:", settings.DATABASES["default"]["NAME"])
 
 
         measurement = LiveMeasurement.objects.create(
+            
 
             seance=seance,
 
@@ -60,6 +65,7 @@ def push_measurement(request):
             Heparine=data.get("Heparin"),
 
         )
+        print("SAVED:", measurement.id)
 
 
         return JsonResponse(

@@ -10,9 +10,18 @@
 {% icon "calendar" cls="h-4 w-4 text-indigo-600 flex-shrink-0" %}
 {% block title %}Dashboard{% endblock %}
 
+{% extends "base.html" %}
+
+
+
 {% block content %}
+ <h1>TEST DASHBOARD LOADED</h1>
 
 <!-- Header -->
+
+
+{% extends "base.html" %}
+...
 <div class="flex items-start justify-between gap-3">
   <div>
     <h2 class="text-2xl font-semibold">Dashboard</h2>
@@ -78,6 +87,60 @@
   </div>
 
 <div></div>
+</div>
+<!-- LIVE MONITORING -->
+
+<div class="mt-6 bg-white rounded-xl shadow-sm border p-6">
+
+    <h3 class="text-lg font-semibold mb-4">
+     Monitoring Temps Réel Dialyse
+    </h3>
+
+
+ <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+
+
+<div class="border rounded-xl p-4">
+<p>Qb</p>
+<h2 id="qb">--</h2>
+</div>
+
+
+<div class="border rounded-xl p-4">
+<p>PA</p>
+<h2 id="pa">--</h2>
+</div>
+
+
+<div class="border rounded-xl p-4">
+<p>PTM</p>
+<h2 id="ptm">--</h2>
+</div>
+
+
+<div class="border rounded-xl p-4">
+<p>PV</p>
+<h2 id="pv">--</h2>
+</div>
+
+
+<div class="border rounded-xl p-4">
+<p>UF</p>
+<h2 id="uf">--</h2>
+</div>
+
+
+</div>
+
+
+<p class="mt-4">
+Machine :
+<span id="machine">
+--
+</span>
+</p>
+
+
 </div>
 
   <!-- Login/logout history -->
@@ -298,5 +361,46 @@
 
 
   </div>
+
+<script>
+
+function updateMonitoring(){
+
+    fetch("/api/real-monitoring/")
+    
+    .then(response => response.json())
+
+    .then(data => {
+
+        if(data.measurements.length > 0){
+
+            let m = data.measurements[0];
+
+            document.getElementById("qb").innerHTML = m.Qb;
+            document.getElementById("pa").innerHTML = m.PA;
+            document.getElementById("ptm").innerHTML = m.PTM;
+            document.getElementById("pv").innerHTML = m.PV;
+            document.getElementById("uf").innerHTML = m.UF;
+
+            document.getElementById("machine").innerHTML = m.machine;
+
+        }
+
+    })
+
+    .catch(error => {
+        console.log(error);
+    });
+
+}
+
+
+updateMonitoring();
+
+setInterval(updateMonitoring,3000);
+
+
+</script>
+
 
 {% endblock %}
