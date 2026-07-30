@@ -6,6 +6,28 @@ from django.views.decorators.csrf import csrf_exempt
 from machines.models import Machine
 from seances.models import Seance
 from monitoring.models import LiveMeasurement
+from django.urls import path
+from monitoring.views import push_measurement, real_monitoring
+
+
+app_name = "api"
+
+
+urlpatterns = [
+
+    path(
+        "push/",
+        push_measurement,
+        name="push_measurement"
+    ),
+
+    path(
+        "real-monitoring/",
+        real_monitoring,
+        name="real_monitoring"
+    ),
+
+]
 
 
 @csrf_exempt

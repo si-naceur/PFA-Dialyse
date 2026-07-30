@@ -1,9 +1,7 @@
 from django.urls import path
 from . import views
 
-
 app_name="monitoring"
-
 
 urlpatterns=[
 
@@ -13,15 +11,22 @@ urlpatterns=[
         name="dashboard"
     ),
 
-
     path(
         'surveillance/',
         views.surveillance_view,
         name="surveillance"
     ),
+
     path(
-    'live-data/',
-    views.live_data,
-    name="live_data"
-),
+        'alerts-history/',
+        views.alerts_history,
+        name="alerts_history"
+    ),
+
+    path(
+        'seances-history/',
+        views.seances_history,
+        name="seances_history"
+    ),
+
 ]
