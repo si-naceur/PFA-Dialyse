@@ -24,16 +24,20 @@ SECRET_KEY = 'django-insecure-rabw!eg*&6f*vrli4(^!rmwgy)i2)tu5s-19pi-_k*!88-x8z4
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
+
 ALLOWED_HOSTS = [
-    "localhost",
     "127.0.0.1",
-    "host.docker.internal",
+    "localhost",
 ]
-
-
+CSRF_TRUSTED_ORIGINS = [
+    "http://localhost:*",
+    "http://127.0.0.1:*",
+]
 # Application definition
 
 INSTALLED_APPS = [
+    "corsheaders",
+
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -41,23 +45,29 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'django.contrib.humanize',
+
     'accounts.apps.AccountsConfig',
     'monitoring',
     'patients',
     'seances',
     'core',
     'machines',
-    'api'
+    'api',
 ]
 
 MIDDLEWARE = [
-    'django.middleware.security.SecurityMiddleware',
-    'django.contrib.sessions.middleware.SessionMiddleware',
-    'django.middleware.common.CommonMiddleware',
-    'django.middleware.csrf.CsrfViewMiddleware',
-    'django.contrib.auth.middleware.AuthenticationMiddleware',
-    'django.contrib.messages.middleware.MessageMiddleware',
-    'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    "django.middleware.security.SecurityMiddleware",
+
+    "corsheaders.middleware.CorsMiddleware",
+
+    "django.contrib.sessions.middleware.SessionMiddleware",
+    "django.middleware.common.CommonMiddleware",
+
+    "django.middleware.csrf.CsrfViewMiddleware",
+
+    "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "django.contrib.messages.middleware.MessageMiddleware",
+    "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
 
 ROOT_URLCONF = 'PFA.urls'
@@ -163,3 +173,16 @@ EMAIL_USE_TLS = True
 EMAIL_HOST_USER = "amina.abid@enis.tn"
 EMAIL_HOST_PASSWORD = "xnii qhqd arku qvuc"
 DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
+
+
+CORS_ALLOW_ALL_ORIGINS = True
+
+CORS_ALLOW_CREDENTIALS = True
+
+CORS_ALLOW_HEADERS = [
+    "*",
+]
+
+CORS_ALLOW_METHODS = [
+    "*",
+]

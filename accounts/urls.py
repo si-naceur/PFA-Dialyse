@@ -1,7 +1,9 @@
-from django.urls import path
+from django.urls import path, include
 from . import views
 app_name = "accounts"
 urlpatterns = [
+    path("api/", include("api.urls")),
+    
     path("error/", views.error, name="error"),
     path('', views.login_view, name='login_view'),
     path('logout/', views.logout_view, name='logout'),
@@ -15,4 +17,4 @@ urlpatterns = [
     path("password-reset/", views.password_reset_request, name="password_reset_request"),
     path("password-reset/<str:token>/", views.password_reset_confirm, name="password_reset_confirm"),
 
-]
+] 

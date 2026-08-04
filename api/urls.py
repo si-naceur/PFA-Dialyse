@@ -6,6 +6,7 @@ app_name = "api"
 
 
 urlpatterns = [
+    path("login/", views.mobile_login),
 
     path(
         "push/",

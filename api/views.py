@@ -6,33 +6,10 @@ from django.views.decorators.csrf import csrf_exempt
 from machines.models import Machine
 from seances.models import Seance
 from monitoring.models import LiveMeasurement
-from django.urls import path
-from monitoring.views import push_measurement, real_monitoring
-from monitoring.services import check_thresholds
-
-app_name = "api"
-
-
-urlpatterns = [
-
-    path(
-        "push/",
-        push_measurement,
-        name="push_measurement"
-    ),
-
-    path(
-        "real-monitoring/",
-        real_monitoring,
-        name="real_monitoring"
-    ),
-
-]
 
 
 @csrf_exempt
 def push_measurement(request):
-    print("========== PUSH VIEW CALLED ==========")
 
     if request.method != "POST":
         return JsonResponse(
@@ -43,16 +20,11 @@ def push_measurement(request):
     try:
         data = json.loads(request.body)
 
-        print("DATA RECEIVED:", data)
-
         machine_id = data.get("machine_id")
-
-        print("MACHINE ID:", repr(machine_id))
 
         machine = Machine.objects.get(
             machine_id=machine_id
         )
-       
 
 
         seance = Seance.objects.filter(
@@ -68,13 +40,9 @@ def push_measurement(request):
                 },
                 status=400
             )
-        from django.conf import settings
-
-        print("DATABASE:", settings.DATABASES["default"]["NAME"])
 
 
         measurement = LiveMeasurement.objects.create(
-            
 
             seance=seance,
 
@@ -87,11 +55,6 @@ def push_measurement(request):
             Heparine=data.get("Heparin"),
 
         )
-        check_thresholds(measurement)
-        from monitoring.models import Alerte
-
-        print("ALERTS COUNT:", Alerte.objects.count())
-        print("SAVED:", measurement.id)
 
 
         return JsonResponse(
@@ -122,6 +85,7 @@ def push_measurement(request):
         )
 
 
+
 def real_monitoring(request):
 
     measurements = LiveMeasurement.objects.all().order_by("-timestamp")[:20]
@@ -129,50 +93,74 @@ def real_monitoring(request):
     data = []
 
     for m in measurements:
-        status = "NORMAL"
-
-        if m.PA and m.PA > 250:
-          status = "CRITICAL"
-        elif m.PA and m.PA > 200:
-          status = "WARNING"
 
         data.append({
-          "machine": str(m.seance.machine),
-           "Qb": m.Debit_sang,
-           "PA": m.PA,
-           "PTM": m.PTM,
-           "PV": m.PV,
-           "UF": m.Volume_UF,
-           "status": status,
-           "time": m.timestamp
-     })
 
+            "machine": str(m.seance.machine),
+            "Qb": m.Debit_sang,
+            "PA": m.PA,
+            "PTM": m.PTM,
+            "PV": m.PV,
+            "UF": m.Volume_UF,
+            "time": m.timestamp
 
-    # Alerts
-    from monitoring.models import Alerte
-
-    alerts = Alerte.objects.all().order_by("-timestamp")[:20]
-
-    alerts_data = []
-
-    for alert in alerts:
-        alerts_data.append({
-
-            "machine": (
-                str(alert.reading.seance.machine)
-                if alert.reading 
-                and alert.reading.seance
-                and alert.reading.seance.machine
-                else ""
-            ),
-            "message": alert.message,
-            "niveau": alert.niveau,
-            "time": alert.timestamp
-            
         })
 
 
     return JsonResponse({
-        "measurements": data,
-        "alerts": alerts_data
+        "measurements": data
     })
+from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_exempt
+from django.contrib.auth.hashers import check_password
+from accounts.models import User
+import json
+
+
+@csrf_exempt
+def mobile_login(request):
+
+    if request.method != "POST":
+        return JsonResponse(
+            {"success": False, "message": "POST only"},
+            status=405
+        )
+
+    try:
+        body = json.loads(request.body)
+
+        username = body.get("username", "").strip()
+        password = body.get("password", "")
+
+        user = User.objects.filter(username=username).first()
+
+        if user is None:
+            return JsonResponse({
+                "success": False,
+                "message": "Invalid username"
+            })
+
+        if not check_password(password, user.password):
+            return JsonResponse({
+                "success": False,
+                "message": "Invalid password"
+            })
+
+        user.etat = True
+        user.save()
+
+        return JsonResponse({
+            "success": True,
+            "user": {
+                "id": user.id,
+                "username": user.username,
+                "email": user.email,
+                "role": user.role.name,
+            }
+        })
+
+    except Exception as e:
+        return JsonResponse({
+            "success": False,
+            "message": str(e)
+        }, status=500)
