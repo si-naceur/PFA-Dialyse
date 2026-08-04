@@ -8,7 +8,7 @@ from seances.models import Seance
 from monitoring.models import LiveMeasurement
 from django.urls import path
 from monitoring.views import push_measurement, real_monitoring
-
+from monitoring.services import check_thresholds
 
 app_name = "api"
 
@@ -87,6 +87,10 @@ def push_measurement(request):
             Heparine=data.get("Heparin"),
 
         )
+        check_thresholds(measurement)
+        from monitoring.models import Alerte
+
+        print("ALERTS COUNT:", Alerte.objects.count())
         print("SAVED:", measurement.id)
 
 
@@ -118,7 +122,6 @@ def push_measurement(request):
         )
 
 
-
 def real_monitoring(request):
 
     measurements = LiveMeasurement.objects.all().order_by("-timestamp")[:20]
@@ -126,20 +129,50 @@ def real_monitoring(request):
     data = []
 
     for m in measurements:
+        status = "NORMAL"
+
+        if m.PA and m.PA > 250:
+          status = "CRITICAL"
+        elif m.PA and m.PA > 200:
+          status = "WARNING"
 
         data.append({
+          "machine": str(m.seance.machine),
+           "Qb": m.Debit_sang,
+           "PA": m.PA,
+           "PTM": m.PTM,
+           "PV": m.PV,
+           "UF": m.Volume_UF,
+           "status": status,
+           "time": m.timestamp
+     })
 
-            "machine": str(m.seance.machine),
-            "Qb": m.Debit_sang,
-            "PA": m.PA,
-            "PTM": m.PTM,
-            "PV": m.PV,
-            "UF": m.Volume_UF,
-            "time": m.timestamp
 
+    # Alerts
+    from monitoring.models import Alerte
+
+    alerts = Alerte.objects.all().order_by("-timestamp")[:20]
+
+    alerts_data = []
+
+    for alert in alerts:
+        alerts_data.append({
+
+            "machine": (
+                str(alert.reading.seance.machine)
+                if alert.reading 
+                and alert.reading.seance
+                and alert.reading.seance.machine
+                else ""
+            ),
+            "message": alert.message,
+            "niveau": alert.niveau,
+            "time": alert.timestamp
+            
         })
 
 
     return JsonResponse({
-        "measurements": data
+        "measurements": data,
+        "alerts": alerts_data
     })

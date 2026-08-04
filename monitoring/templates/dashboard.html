@@ -309,6 +309,14 @@ Machine :
 </span>
 
 </p>
+<div id="status-box" class="mt-4 p-3 rounded-lg bg-gray-100">
+
+    Status :
+    <span id="machine-status" class="font-semibold">
+        --
+    </span>
+
+</div>
 
 
 
@@ -758,7 +766,7 @@ Machine :
 
 
 
-function updateMonitoring(){
+  function updateMonitoring(){
 
 
 
@@ -799,7 +807,24 @@ function updateMonitoring(){
 
 
             document.getElementById("machine").innerHTML = m.machine ?? "--";
+            const statusElement = document.getElementById("machine-status");
+            const statusBox = document.getElementById("status-box");
 
+            statusElement.innerHTML = m.status ?? "--";
+
+            statusElement.className = "font-semibold";
+
+            if (m.status === "NORMAL") {
+               statusElement.classList.add("text-green-600");
+            }
+
+            else if (m.status === "WARNING") {
+              statusElement.classList.add("text-yellow-600");
+            }
+
+            else if (m.status === "CRITICAL") {
+               statusElement.classList.add("text-red-600");
+            }
 
 
         }
@@ -831,10 +856,10 @@ function updateMonitoring(){
 
 
 function updateAlerts(){
+  
 
 
-
-    fetch("/api/live-data/")
+   fetch("/api/real-monitoring/")
 
 
 
@@ -847,6 +872,7 @@ function updateAlerts(){
 
 
         console.log("Alerts:", data);
+        console.log(data.alerts);
 
 
 
@@ -944,15 +970,6 @@ function updateAlerts(){
 
 
 
-                        <span>
-
-
-
-                            ${alert.status}
-
-
-
-                        </span>
 
 
 
@@ -966,15 +983,17 @@ function updateAlerts(){
 
 
 
-                    <p class="mt-2">
-
-
-
-                        ${alert.message}
-
-
-
+                    <p class="mt-2 font-semibold">
+                        ${alert.machine}
                     </p>
+
+                     <p class="mt-2">
+                        ${alert.message}
+                     </p>
+
+
+
+                        
 
 
 
@@ -1030,128 +1049,35 @@ function updateAlerts(){
 
 
 
-updateMonitoring();
-
-
-
-updateAlerts();
-
-
-
-
-
-// تحديث كل 3 ثواني
-
-
-
-setInterval(() => {
-
-
-
-
-
-    updateMonitoring();
-
-
-
-    updateAlerts();
-
-
-
-
-
-}, 3000);
-
-
-
-
-function updateMonitoring(){
+function refreshDashboard(){
 
     fetch("/api/real-monitoring/")
+
     .then(response => response.json())
+
     .then(data => {
 
-        console.log("Monitoring:", data);
+        console.log("Dashboard:", data);
 
-        if(data.measurements && data.measurements.length > 0){
-
-            let m = data.measurements[0];
-
-            document.getElementById("qb").innerHTML = m.Qb ?? "--";
-            document.getElementById("pa").innerHTML = m.PA ?? "--";
-            document.getElementById("ptm").innerHTML = m.PTM ?? "--";
-            document.getElementById("pv").innerHTML = m.PV ?? "--";
-            document.getElementById("uf").innerHTML = m.UF ?? "--";
-            document.getElementById("machine").innerHTML = m.machine ?? "--";
-
-        }
+        updateMonitoring(data.measurements);
+        updateAlerts(data.alerts);
 
     })
+
     .catch(error => {
-        console.log("Monitoring error:", error);
+        console.log("Dashboard error:", error);
     });
 
 }
 
 
-function updateAlerts(){
+refreshDashboard();
+
+setInterval(refreshDashboard, 3000);
 
 
 
 
-        container.innerHTML = "";
-
-        data.alerts.forEach(alert => {
-
-            let color = "bg-yellow-100 text-yellow-800";
-
-            if(alert.niveau === "RED"){
-                color = "bg-red-100 text-red-800";
-            }
-
-
-            container.innerHTML += `
-            
-            <div class="border rounded-lg p-3 mb-2">
-
-                <span class="${color} px-2 py-1 rounded">
-                    ${alert.niveau}
-                </span>
-
-                <p class="mt-2">
-                    ${alert.message}
-                </p>
-
-            </div>
-
-            `;
-
-        });
-
-
-    })
-    .catch(error => {
-        console.log("Alerts error:", error);
-    });
-
-}
-
-
-
-// أول تشغيل
-
-updateMonitoring();
-updateAlerts();
-
-
-// تحديث كل 3 ثواني
-
-setInterval(() => {
-
-    updateMonitoring();
-    updateAlerts();
-
-},3000);
 
 
 </script>

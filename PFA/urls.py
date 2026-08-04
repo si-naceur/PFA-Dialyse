@@ -29,7 +29,7 @@ urlpatterns = [
     path('seances/', include('seances.urls')),
     path('machines/', include('machines.urls')),
     path("dashboard/", views.dashboard, name="dashboard"),
-path('api/', include('api.urls')),
+    path('api/', include('api.urls')),
 ]
 
 if settings.DEBUG:
