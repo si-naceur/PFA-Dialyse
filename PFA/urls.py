@@ -19,6 +19,7 @@ from django.urls import path
 from django.urls import include
 from django.conf import settings
 from django.conf.urls.static import static
+from accounts import views
 
 urlpatterns = [
     path('', include('accounts.urls')),
@@ -27,7 +28,8 @@ urlpatterns = [
     path('patients/', include('patients.urls')),
     path('seances/', include('seances.urls')),
     path('machines/', include('machines.urls')),
-path('api/', include('api.urls')),
+    path("dashboard/", views.dashboard, name="dashboard"),
+    path('api/', include('api.urls')),
 ]
 
 if settings.DEBUG:

@@ -223,7 +223,7 @@ let alarmPlaying = false;
 
 function loadLiveData(){
 
-    fetch("/monitoring/live-data/")
+    fetch("/api/real-monitoring/")
 
     .then(response => response.json())
 
@@ -234,9 +234,34 @@ function loadLiveData(){
 
 
 
-        let sessions = data.sessions || [];
+        let sessions = [];
+let alerts = data.alerts || [];
 
-        let alerts = data.alerts || [];
+
+if(data.measurements && data.measurements.length > 0){
+
+    let m = data.measurements[0];
+
+
+    sessions.push({
+
+        patient:"Patient test",
+
+        machine:m.machine,
+
+        Qb:m.Qb,
+
+        PA:m.PA,
+
+        PTM:m.PTM,
+
+        PV:m.PV,
+
+        UF:m.UF
+
+    });
+
+}
 
 
 

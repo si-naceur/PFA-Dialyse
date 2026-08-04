@@ -14,10 +14,24 @@ from django.contrib.auth.hashers import make_password, check_password
 from django.conf import settings
 from django.core.mail import send_mail
 from django.urls import reverse
+from django.shortcuts import render
+from accounts.models import UserActivity
 
 # Create your views here.
 # def home(request):
 # return render(request, 'home.html')
+
+def dashboard(request):
+
+    activity_rows = UserActivity.objects.all().order_by("-login_at")
+
+    return render(
+        request,
+        "dashboard.html",
+        {
+            "activity_rows": activity_rows
+        }
+    )
 
 def login_view(request):
     auth_error = None

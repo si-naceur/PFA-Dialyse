@@ -16,6 +16,30 @@ from machines.models import Machine
 from seances.models import Seance
 from monitoring.models import LiveMeasurement, Alerte
 from monitoring.services import check_thresholds
+from django.http import JsonResponse
+from monitoring.models import Alerte
+
+
+def live_alerts(request):
+
+    alerts = Alerte.objects.filter(
+        status="ACTIVE"
+    ).order_by("-created_at")[:10]
+
+
+    data = []
+
+    for alert in alerts:
+        data.append({
+            "niveau": alert.niveau,
+            "message": alert.message,
+            "status": alert.status,
+        })
+
+
+    return JsonResponse({
+        "alerts": data
+    })
 
 def ia_conseil(request):
     return JsonResponse({"message": "Test ia_conseil"})
@@ -97,8 +121,10 @@ def dashboard(request):
 @role_required("Admin", "Docteur", "Infirmier", redirect_to="accounts:error")
 def surveillance_view(request):
     current_user = request.current_user
-    active_sessions = Seance.objects.filter(status="En cours") \
+    active_sessions = (
+           Seance.objects.filter(status="En cours")
           .select_related("patient", "machine")
+    )
     return render(request, "surveillance.html", {"current_user": current_user ,"sessions": active_sessions})
 from django.http import JsonResponse
 from django.utils import timezone
@@ -171,6 +197,32 @@ def live_data(request):
         "last_update": timezone.now()
     })
 @csrf_exempt
+def real_monitoring(request):
+    last = (
+        LiveMeasurement.objects
+        .select_related("seance__machine")
+        .order_by("-timestamp")
+        .first()
+    )
+
+    if not last:
+        return JsonResponse({
+            "measurements": []
+        })
+
+    return JsonResponse({
+        "measurements": [
+            {
+                "machine": str(last.seance.machine),
+                "Qb": last.Debit_sang,
+                "PA": last.PA,
+                "PTM": last.PTM,
+                "PV": last.PV,
+                "UF": last.Volume_UF,
+                "time": last.timestamp.isoformat(),
+            }
+        ]
+    })
 def push_measurement(request):
 
     if request.method != "POST":
