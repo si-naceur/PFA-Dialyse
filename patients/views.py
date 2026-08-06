@@ -14,7 +14,14 @@ from django.contrib import messages
 
 
 def calculate_age(dob_str):
-    dob = date.fromisoformat(dob_str)
+    if not dob_str:
+        return 0
+
+    try:
+        dob = date.fromisoformat(dob_str)
+    except (TypeError, ValueError):
+        return 0
+
     today = date.today()
     return today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
 
@@ -26,7 +33,7 @@ def patient(request):
     q = request.GET.get("q", "").strip()
     
 
-    qs = Patient.objects.using("mongodb").all().order_by("-created_at")
+    qs = Patient.objects.all().order_by("-created_at")
     patients=qs
     if q:
         qs = qs.filter(Q(first_name__icontains=q) | Q(last_name__icontains=q))
@@ -41,8 +48,6 @@ def patient(request):
 
     return render(request, "patient.html", context)
 
-@app_login_required
-@role_required("Admin", "Docteur","Infirmier", redirect_to="accounts:error")
 @app_login_required
 @role_required("Admin", "Docteur", "Infirmier", redirect_to="accounts:error")
 def add_patient(request):
@@ -60,7 +65,7 @@ def add_patient(request):
     antecedents_medicaux = request.POST.get("medicalhistory", "").strip()
     groupe_sanguin = request.POST.get("groupSanguin", "A+")
 
-    patient = Patient.objects.using("mongodb").create(
+    patient = Patient.objects.create(
         first_name=FirstName,
         last_name=LastName,
         date_of_birth=dateOfBirth,
@@ -81,7 +86,7 @@ def add_patient(request):
 def patient_profile(request, id):
     current_user = request.current_user
     try:
-        patient = Patient.objects.using("mongodb").get(id=id)
+        patient = Patient.objects.get(id=id)
     except Patient.DoesNotExist:
         messages.error(request, "Patient non trouvé.")
         return redirect("patients:patient")
@@ -107,7 +112,7 @@ def patient_profile(request, id):
 @role_required("Admin", "Docteur", "Infirmier", redirect_to="accounts:error")
 def edit_patient(request, id):
     try:
-        patient = Patient.objects.using("mongodb").get(id=id)
+        patient = Patient.objects.get(id=id)
     except Patient.DoesNotExist:
         messages.error(request, "Patient non trouvé.")
         return redirect("patients:patient")
@@ -115,16 +120,16 @@ def edit_patient(request, id):
     if request.method != "POST":
         return redirect("patients:Patient_Profile", id=id)
 
-    patient.first_name       = request.POST.get("FirstName", "").strip()
-    patient.last_name        = request.POST.get("LastName", "").strip()
-    patient.date_of_birth    = request.POST.get("dateOfBirth")
-    patient.telephone        = request.POST.get("phone", "").strip()
-    patient.adresse          = request.POST.get("address", "").strip()
-    patient.contact_urgence  = request.POST.get("contacturgences", "").strip()
-    patient.antecedents_med  = request.POST.get("medicalhistory", "").strip()
-    patient.group_sanguin    = request.POST.get("groupSanguin", "A+")
-    patient.age              = calculate_age(request.POST.get("dateOfBirth"))
-    patient.save(using="mongodb")
+    patient.first_name = request.POST.get("FirstName", "").strip()
+    patient.last_name = request.POST.get("LastName", "").strip()
+    patient.date_of_birth = request.POST.get("dateOfBirth")
+    patient.telephone = request.POST.get("phone", "").strip()
+    patient.adresse = request.POST.get("address", "").strip()
+    patient.contact_urgence = request.POST.get("contacturgences", "").strip()
+    patient.antecedents_medicaux = request.POST.get("medicalhistory", "").strip()
+    patient.groupe_sanguin = request.POST.get("groupSanguin", "A+")
+    patient.age = calculate_age(request.POST.get("dateOfBirth"))
+    patient.save()
 
     messages.success(request, "Profil modifié avec succès !")
     return redirect("patients:Patient_Profile", id=id)

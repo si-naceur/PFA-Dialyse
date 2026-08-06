@@ -29,7 +29,7 @@ def push_measurement(request):
 
         seance = Seance.objects.filter(
             machine=machine,
-            status="En cours"
+            status="en cours"
         ).first()
 
 
@@ -148,6 +148,7 @@ def mobile_login(request):
 
         user.etat = True
         user.save()
+        request.session['app_user_id'] = user.id
 
         return JsonResponse({
             "success": True,

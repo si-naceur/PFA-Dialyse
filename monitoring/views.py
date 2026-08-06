@@ -23,8 +23,8 @@ from monitoring.models import Alerte
 def live_alerts(request):
 
     alerts = Alerte.objects.filter(
-        status="ACTIVE"
-    ).order_by("-created_at")[:10]
+        status="NEW"
+    ).order_by("-timestamp")[:10]
 
 
     data = []
@@ -242,7 +242,7 @@ def push_measurement(request):
 
         seance = Seance.objects.filter(
             machine=machine,
-            status="En cours"
+            status="en cours"
         ).first()
 
         if not seance:

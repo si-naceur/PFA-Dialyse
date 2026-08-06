@@ -1,3 +1,9 @@
-from django.test import TestCase
+from django.test import SimpleTestCase
 
-# Create your tests here.
+from patients.views import calculate_age
+
+
+class CalculateAgeTests(SimpleTestCase):
+    def test_calculate_age_returns_zero_for_invalid_date(self):
+        self.assertEqual(calculate_age(""), 0)
+        self.assertEqual(calculate_age("not-a-date"), 0)

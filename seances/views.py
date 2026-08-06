@@ -437,7 +437,7 @@ def search_sessions(request):
     # ──  Filtre statut ────────────────────────────────
     STATUS_MAP = {
         'planifiée': 'planifiée',
-        'en cours': 'en_cours',
+        'en cours': 'en cours',
         'terminée': 'terminée',
         'annulée': 'annulée',
     }

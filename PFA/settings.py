@@ -10,6 +10,7 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/4.2/ref/settings/
 """
 
+import importlib.util
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -97,18 +98,25 @@ WSGI_APPLICATION = 'PFA.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'NAME': str(BASE_DIR / 'db.sqlite3'),
     },
+}
 
-    'mongodb': {
+if importlib.util.find_spec('djongo') is not None:
+    DATABASES['mongodb'] = {
         'ENGINE': 'djongo',
         'NAME': 'dyalise_db',
         'CLIENT': {
             'host': 'mongodb://127.0.0.1:27017/'
-        }
+        },
     }
-}
-DATABASE_ROUTERS = ['PFA.routers.MongoRouter']
+    DATABASE_ROUTERS = ['PFA.routers.MongoRouter']
+else:
+    DATABASES['mongodb'] = {
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': str(BASE_DIR / 'db.sqlite3'),
+    }
+    DATABASE_ROUTERS = []
 
 
 # Password validation
