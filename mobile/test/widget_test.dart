@@ -1,30 +1,86 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:mobile/main.dart';
+import 'package:mobile/features/patients/domain/entities/patient_entity.dart';
+import 'package:mobile/features/patients/presentation/widgets/patient_card.dart';
+import 'package:mobile/features/patients/presentation/widgets/status_badge.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const PfaDialyseApp());
+  const patient = PatientEntity(
+    id: 1,
+    firstName: 'Ahmed',
+    lastName: 'Ben Salah',
+    dateOfBirth: '1980-05-20',
+    age: 45,
+    groupeSanguin: 'O+',
+    typeDeDialyse: 'Hémodialyse',
+    adresse: 'Tunis',
+    telephone: '+216 22 000 111',
+    contactUrgence: '+216 98 000 111',
+    antecedentsMedicaux: 'Diabète',
+    createdAt: null,
+  );
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+  testWidgets('PatientCard shows name, birth date, chips and phone', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(body: PatientCard(patient: patient)),
+      ),
+    );
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
+    expect(find.text('Ahmed Ben Salah'), findsOneWidget);
+    expect(find.text('Né(e) le 20/05/1980'), findsOneWidget);
+    expect(find.textContaining('O+'), findsOneWidget);
+    expect(find.text('+216 22 000 111'), findsOneWidget);
+    expect(find.text('Voir le dossier'), findsOneWidget);
+  });
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+  testWidgets('PatientCard renders em-dash for missing phone', (tester) async {
+    const noPhone = PatientEntity(
+      id: 2,
+      firstName: 'Sami',
+      lastName: 'Ben Ali',
+      dateOfBirth: null,
+      age: 30,
+      groupeSanguin: '',
+      typeDeDialyse: '',
+      adresse: '',
+      telephone: '',
+      contactUrgence: '',
+      antecedentsMedicaux: '',
+      createdAt: null,
+    );
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(body: PatientCard(patient: noPhone)),
+      ),
+    );
+
+    expect(find.text('—'), findsNWidgets(3));
+  });
+
+  testWidgets('StatusBadge shows the four Django statuses', (tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: Column(
+            children: [
+              StatusBadge(status: 'planifiée'),
+              StatusBadge(status: 'en cours'),
+              StatusBadge(status: 'terminée'),
+              StatusBadge(status: 'annulée'),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('Planifiée'), findsOneWidget);
+    expect(find.text('En cours'), findsOneWidget);
+    expect(find.text('Terminée'), findsOneWidget);
+    expect(find.text('Annulée'), findsOneWidget);
   });
 }

@@ -9,6 +9,10 @@ class SecureStorageService {
   static const String _keyUsername = 'username';
   static const String _keyUserEmail = 'user_email';
   static const String _keyUserRole = 'user_role';
+  static const String _keyUserPhone = 'user_phone';
+  static const String _keyUserAddress = 'user_address';
+  static const String _keyUserSpecialite = 'user_specialite';
+  static const String _keyFirstLogin = 'first_login';
   static const String _keySessionCookie = 'session_cookie';
 
   Future<void> saveUserSession({
@@ -16,6 +20,10 @@ class SecureStorageService {
     required String username,
     required String? email,
     required String role,
+    String? phone,
+    String? address,
+    String? specialite,
+    bool? firstLogin,
     String? cookie,
   }) async {
     await _storage.write(key: _keyUserId, value: userId.toString());
@@ -24,6 +32,18 @@ class SecureStorageService {
       await _storage.write(key: _keyUserEmail, value: email);
     }
     await _storage.write(key: _keyUserRole, value: role);
+    if (phone != null) {
+      await _storage.write(key: _keyUserPhone, value: phone);
+    }
+    if (address != null) {
+      await _storage.write(key: _keyUserAddress, value: address);
+    }
+    if (specialite != null) {
+      await _storage.write(key: _keyUserSpecialite, value: specialite);
+    }
+    if (firstLogin != null) {
+      await _storage.write(key: _keyFirstLogin, value: firstLogin ? '1' : '0');
+    }
     if (cookie != null) {
       await _storage.write(key: _keySessionCookie, value: cookie);
     }
@@ -38,8 +58,29 @@ class SecureStorageService {
     return await _storage.read(key: _keyUsername);
   }
 
+  Future<String?> getUserEmail() async {
+    return await _storage.read(key: _keyUserEmail);
+  }
+
   Future<String?> getUserRole() async {
     return await _storage.read(key: _keyUserRole);
+  }
+
+  Future<String?> getUserPhone() async {
+    return await _storage.read(key: _keyUserPhone);
+  }
+
+  Future<String?> getUserAddress() async {
+    return await _storage.read(key: _keyUserAddress);
+  }
+
+  Future<String?> getUserSpecialite() async {
+    return await _storage.read(key: _keyUserSpecialite);
+  }
+
+  Future<bool> getFirstLogin() async {
+    final val = await _storage.read(key: _keyFirstLogin);
+    return val == '1';
   }
 
   Future<String?> getSessionCookie() async {

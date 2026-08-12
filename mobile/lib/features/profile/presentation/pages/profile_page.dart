@@ -4,9 +4,18 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/routes/app_router.dart';
+import '../../../../core/widgets/app_shell.dart';
 import '../../../../core/widgets/custom_button.dart';
+import '../../../authentication/domain/entities/user_entity.dart';
 import '../../../authentication/presentation/providers/auth_provider.dart';
 
+/// Flutter counterpart of Django `accounts/templates/profile.html`.
+/// Displays the same identity block and phone/email/address cards from the
+/// authenticated user payload returned by `/api/login/`.
+///
+/// Profile edit / password change require Django form POST endpoints that are
+/// not yet exposed as mobile JSON APIs — those actions are deferred until an
+/// API exists (no invented endpoints).
 class ProfilePage extends ConsumerWidget {
   const ProfilePage({super.key});
 
@@ -20,25 +29,78 @@ class ProfilePage extends ConsumerWidget {
 
     final user = authState.user;
 
-    Color roleBgColor = AppColors.primaryLight;
-    Color roleTextColor = AppColors.primary;
-    if (user.isDoctor) {
-      roleBgColor = const Color(0xFFE0E7FF);
-      roleTextColor = const Color(0xFF4338CA);
-    } else if (user.isNurse) {
-      roleBgColor = const Color(0xFFDCFCE7);
-      roleTextColor = const Color(0xFF15803D);
-    } else if (user.isAdmin) {
-      roleBgColor = const Color(0xFFFEE2E2);
-      roleTextColor = const Color(0xFFB91C1C);
-    }
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Profil Utilisateur'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.logout_rounded, color: AppColors.danger),
+    return AppShell(
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          const Text(
+            'Mon Profil',
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF111827),
+            ),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Informations du compte connecté',
+            style: TextStyle(fontSize: 13, color: Color(0xFF6B7280)),
+          ),
+          const SizedBox(height: 16),
+          if (user.firstLogin) ...[
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFEF3C7),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: const Color(0xFFF59E0B)),
+              ),
+              child: const Text(
+                'Première connexion : veuillez mettre à jour votre mot de passe '
+                'depuis le profil web Django (API mobile de modification non '
+                'disponible pour le moment).',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: Color(0xFF92400E),
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
+          _IdentityCard(user: user),
+          const SizedBox(height: 12),
+          _InfoCard(
+            icon: Icons.phone_outlined,
+            label: 'Téléphone',
+            value: _display(user.phone),
+          ),
+          const SizedBox(height: 12),
+          _InfoCard(
+            icon: Icons.mail_outline,
+            label: 'Email',
+            value: _display(user.email, empty: 'Non renseignée'),
+          ),
+          const SizedBox(height: 12),
+          _InfoCard(
+            icon: Icons.location_on_outlined,
+            label: 'Adresse',
+            value: _display(user.address, empty: 'Non renseignée'),
+          ),
+          if (user.specialite != null && user.specialite!.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            _InfoCard(
+              icon: Icons.medical_services_outlined,
+              label: 'Spécialité',
+              value: user.specialite!,
+            ),
+          ],
+          const SizedBox(height: 24),
+          CustomButton(
+            text: 'Se déconnecter',
+            backgroundColor: AppColors.danger,
+            icon: Icons.logout_rounded,
             onPressed: () async {
               await ref.read(authStateProvider.notifier).logout();
               if (context.mounted) {
@@ -48,152 +110,143 @@ class ProfilePage extends ConsumerWidget {
           ),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20.0),
-        child: Column(
-          children: [
-            const SizedBox(height: 16),
-            // User Avatar & Role Badge
-            Center(
-              child: Column(
-                children: [
-                  CircleAvatar(
-                    radius: 48,
-                    backgroundColor: AppColors.primaryLight,
-                    child: Text(
-                      user.username.isNotEmpty
-                          ? user.username[0].toUpperCase()
-                          : 'U',
-                      style: const TextStyle(
-                        fontSize: 36,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.primary,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    user.username,
-                    style: const TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: roleBgColor,
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      user.role,
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: roleTextColor,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 32),
-
-            // Profile Information Card
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  children: [
-                    _buildInfoRow(
-                      context,
-                      icon: Icons.person_outline,
-                      label: 'Nom d\'utilisateur',
-                      value: user.username,
-                    ),
-                    const Divider(),
-                    _buildInfoRow(
-                      context,
-                      icon: Icons.email_outlined,
-                      label: 'Email',
-                      value: user.email ?? 'Non renseigné',
-                    ),
-                    const Divider(),
-                    _buildInfoRow(
-                      context,
-                      icon: Icons.badge_outlined,
-                      label: 'Rôle System',
-                      value: user.role,
-                    ),
-                    if (user.specialite != null &&
-                        user.specialite!.isNotEmpty) ...[
-                      const Divider(),
-                      _buildInfoRow(
-                        context,
-                        icon: Icons.medical_services_outlined,
-                        label: 'Spécialité',
-                        value: user.specialite!,
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 32),
-
-            // Logout Action Button
-            CustomButton(
-              text: 'Se déconnecter',
-              backgroundColor: AppColors.danger,
-              icon: Icons.logout_rounded,
-              onPressed: () async {
-                await ref.read(authStateProvider.notifier).logout();
-                if (context.mounted) {
-                  context.go(AppRouter.login);
-                }
-              },
-            ),
-          ],
-        ),
-      ),
     );
   }
 
-  Widget _buildInfoRow(
-    BuildContext context, {
-    required IconData icon,
-    required String label,
-    required String value,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 10.0),
+  static String _display(String? value, {String empty = 'Non renseigné'}) {
+    if (value == null || value.trim().isEmpty) return empty;
+    return value;
+  }
+}
+
+class _IdentityCard extends StatelessWidget {
+  final UserEntity user;
+
+  const _IdentityCard({required this.user});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFDBEAFE)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x08000000),
+            blurRadius: 2,
+            offset: Offset(0, 1),
+          ),
+        ],
+      ),
       child: Row(
         children: [
-          Icon(icon, color: AppColors.primary, size: 22),
+          Container(
+            width: 88,
+            height: 88,
+            decoration: BoxDecoration(
+              color: const Color(0xFFF3F4F6),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: const Color(0xFFE5E7EB), width: 2),
+            ),
+            child: const Icon(
+              Icons.person_outline,
+              size: 40,
+              color: Color(0xFF6B7280),
+            ),
+          ),
           const SizedBox(width: 16),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
+                  user.username,
+                  style: const TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF111827),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFDBEAFE),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    user.role,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF1E40AF),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _InfoCard extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+
+  const _InfoCard({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFF3F4F6)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x08000000),
+            blurRadius: 2,
+            offset: Offset(0, 1),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 24, color: const Color(0xFF2563EB)),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
                   label,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Theme.of(context).brightness == Brightness.dark
-                        ? AppColors.textSecondaryDark
-                        : AppColors.textSecondaryLight,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: Color(0xFF6B7280),
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
                 const SizedBox(height: 2),
                 Text(
                   value,
                   style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w500,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF111827),
                   ),
                 ),
               ],

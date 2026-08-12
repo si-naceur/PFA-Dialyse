@@ -30,9 +30,20 @@ ALLOWED_HOSTS = [
     "127.0.0.1",
     "localhost",
 ]
+
+# Django does not accept port wildcards (e.g. "http://localhost:*").
+# Flutter Web uses a random localhost port; list regex-friendly CSRF is not
+# available, but mobile API mutating views are csrf_exempt. Keep common
+# local origins for any non-exempt forms during development.
 CSRF_TRUSTED_ORIGINS = [
-    "http://localhost:*",
-    "http://127.0.0.1:*",
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
+    "http://localhost:5000",
+    "http://127.0.0.1:5000",
+    "http://localhost:8080",
+    "http://127.0.0.1:8080",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
 ]
 # Application definition
 
@@ -183,14 +194,32 @@ EMAIL_HOST_PASSWORD = "xnii qhqd arku qvuc"
 DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
 
 
-CORS_ALLOW_ALL_ORIGINS = True
+# ---------------------------------------------------------------------------
+# CORS — local Flutter Web (Dio + credentialed XHR) development settings.
+# Browsers reject Access-Control-Allow-Origin/Headers/Methods: * when
+# Access-Control-Allow-Credentials is true. Do not combine ALLOW_ALL with
+# credentials.
+# ---------------------------------------------------------------------------
+from corsheaders.defaults import default_headers, default_methods
 
+CORS_ALLOW_ALL_ORIGINS = False
 CORS_ALLOW_CREDENTIALS = True
-
-CORS_ALLOW_HEADERS = [
-    "*",
+CORS_ALLOWED_ORIGIN_REGEXES = [
+    r"^http://localhost:\d+$",
+    r"^http://127\.0\.0\.1:\d+$",
 ]
-
-CORS_ALLOW_METHODS = [
-    "*",
+CORS_ALLOW_HEADERS = list(default_headers) + [
+    "x-session-id",
 ]
+CORS_ALLOW_METHODS = list(default_methods)
+
+# Flutter Web (localhost:<port> or 127.0.0.1:<port>) → Django :8000 is
+# cross-origin. SameSite=Lax cookies are often not stored/sent on those XHRs.
+# None+Secure works for credentialed CORS; Chrome treats localhost/127.0.0.1
+# as a secure context even over http.
+SESSION_COOKIE_SAMESITE = "None"
+CSRF_COOKIE_SAMESITE = "None"
+SESSION_COOKIE_SECURE = True
+CSRF_COOKIE_SECURE = True
+SESSION_COOKIE_HTTPONLY = True
+CSRF_COOKIE_HTTPONLY = False

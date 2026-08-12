@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 
 class AppColors {
-  // Medical Primary Colors
-  static const Color primary = Color(0xFF0284C7); // Sky / Medical Blue
-  static const Color primaryDark = Color(0xFF0369A1);
-  static const Color primaryLight = Color(0xFFE0F2FE);
+  // Django Tailwind blue-600 / blue-700 / blue-50 (navbar + primary CTAs)
+  static const Color primary = Color(0xFF2563EB);
+  static const Color primaryDark = Color(0xFF1D4ED8);
+  static const Color primaryLight = Color(0xFFEFF6FF);
 
   // Accent / Secondary
   static const Color secondary = Color(0xFF0D9488); // Teal

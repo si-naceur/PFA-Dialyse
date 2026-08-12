@@ -1,49 +1,57 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
+
 class ApiEndpoints {
-  // Base Django Backend URL
-  // For Android Emulator: http://10.0.2.2:8000
-  // For iOS Simulator / Web / Desktop / Same Machine: http://127.0.0.1:8000
-  static const String baseUrl = 'http://127.0.0.1:8000';
+  /// Django API base URL.
+  ///
+  /// On Flutter Web the page host (`localhost` vs `127.0.0.1`) must match the
+  /// API host. Browsers treat those as different sites, so a session cookie set
+  /// on one is not sent to the other — causing 401 after a successful login.
+  static String get baseUrl {
+    if (kIsWeb) {
+      final host = Uri.base.host;
+      if (host == 'localhost' || host == '127.0.0.1') {
+        return 'http://$host:8000';
+      }
+    }
+    // Android emulator: http://10.0.2.2:8000
+    // iOS simulator / desktop / same machine:
+    return 'http://localhost:8000';
+  }
 
   // Auth
   static const String login = '/api/login/';
+  static const String logout = '/api/logout/';
 
-  // Monitoring
-  static const String realMonitoring = '/api/real-monitoring/';
-  static const String pushMeasurement = '/api/push/';
-  static const String liveData = '/monitoring/surveillance/';
-  static const String alertsHistory = '/monitoring/alerts-history/';
-  static const String ackAlert = '/monitoring/ack_alert/';
-  static const String resolveAlert = '/monitoring/resolve_alert/';
-  static const String seancesHistory = '/monitoring/seances-history/';
+  // Dashboard
+  static const String dashboard = '/api/dashboard/';
 
   // Patients
-  static const String patientsList = '/patients/';
-  static const String addPatient = '/patients/add/';
-  static const String patientProfile = '/patients/profile/';
-  static const String editPatient = '/patients/edit/';
+  static const String patients = '/api/patients/';
+  static const String patientDetail = '/api/patients/'; // + {patient_id}/
 
   // Machines
-  static const String machinesList = '/machines/';
-  static const String addMachine = '/machines/ajout_machine/';
-  static const String configMachine = '/machines/configurer/';
-  static const String updateMachineStatus = '/machines/update_status/';
-  static const String detailsMachine = '/machines/details/';
-  static const String raspiManagement = '/machines/raspi/';
-  static const String assignRaspi = '/machines/raspi/';
+  static const String machines = '/api/machines/';
+  static const String machineDetail = '/api/machines/'; // + {machine_id}/
 
   // Sessions / Seances
-  static const String planning = '/seances/';
-  static const String createSession = '/seances/create_session/';
-  static const String searchSessions = '/seances/sessions/search/';
-  static const String preSession = '/seances/';
-  static const String postSession = '/seances/';
-  static const String cancelSession = '/seances/';
+  static const String sessions = '/api/sessions/';
+  static const String sessionDetail = '/api/sessions/'; // + {session_id}/
+  static const String sessionStart = '/api/sessions/'; // + {session_id}/start/
+  static const String sessionEnd = '/api/sessions/'; // + {session_id}/end/
+  static const String sessionCancel =
+      '/api/sessions/'; // + {session_id}/cancel/
 
-  // Accounts & Profile
-  static const String dashboard = '/dashboard/';
-  static const String profile = '/profile/';
-  static const String doctorsList = '/docteurs/';
-  static const String addDoctor = '/add-doctor/';
-  static const String nursesList = '/nurses/';
-  static const String addNurse = '/nurses/ajouter/';
+  // Alerts
+  static const String alerts = '/api/alerts/';
+  static const String alertAck = '/api/alerts/'; // + {alert_id}/ack/
+  static const String alertResolve = '/api/alerts/'; // + {alert_id}/resolve/
+
+  // Monitoring
+  static const String monitoring = '/api/monitoring/';
+  static const String monitoringLive = '/api/monitoring/live/';
+  static const String realMonitoring = '/api/real-monitoring/';
+
+  // Raspberry Pi / Edge pipeline
+  static const String pushMeasurement = '/api/push/';
+  static const String seanceDebit = '/api/seance/debit/';
 }

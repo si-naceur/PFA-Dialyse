@@ -1,51 +1,777 @@
+"""
+api/views.py — PFA-Dialyse Mobile REST API (Phase 1)
+"""
 import json
-
+from datetime import date, datetime, timedelta
 from django.http import JsonResponse
+from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
+from django.contrib.auth.hashers import check_password
+from django.db.models import Avg, Q
 
-from machines.models import Machine
-from seances.models import Seance
-from monitoring.models import LiveMeasurement
+from accounts.models import User, UserActivity
+from machines.models import Machine, RaspiDevice
+from monitoring.models import LiveMeasurement, Alerte
+from monitoring.services import check_thresholds
+from patients.models import Patient
+from seances.models import (
+    Seance,
+    PreSessionMeasurements,
+    PostSessionMeasurements,
+    Alert as SeanceAlert,
+)
 
+def _json_ok(data=None, **kwargs):
+    body = {"success": True}
+    if data is not None:
+        body["data"] = data
+    body.update(kwargs)
+    return JsonResponse(body)
+
+def _json_err(message, status=400):
+    return JsonResponse({"success": False, "error": message}, status=status)
+
+def _bind_session_from_header(request):
+    """Flutter Web cannot set the Cookie header; load the same Django session
+    from X-Session-Id when the browser did not attach sessionid."""
+    if request.session.get("app_user_id"):
+        return
+    session_key = (
+        request.headers.get("X-Session-Id")
+        or request.META.get("HTTP_X_SESSION_ID")
+        or ""
+    ).strip()
+    if not session_key:
+        return
+    from importlib import import_module
+    from django.conf import settings
+
+    engine = import_module(settings.SESSION_ENGINE)
+    store = engine.SessionStore(session_key=session_key)
+    if store.exists(session_key):
+        request.session = store
+
+
+def api_login_required(view_func):
+    from functools import wraps
+    @wraps(view_func)
+    def _wrapped(request, *args, **kwargs):
+        _bind_session_from_header(request)
+        user_id = request.session.get("app_user_id")
+        if not user_id:
+            return _json_err("Authentication required", status=401)
+        try:
+            request.current_user = User.objects.select_related("role").get(id=user_id)
+        except User.DoesNotExist:
+            request.session.flush()
+            return _json_err("Session expired", status=401)
+        return view_func(request, *args, **kwargs)
+    return _wrapped
+
+def _has_role(user, *roles):
+    if not hasattr(user, "role") or not user.role:
+        return False
+    role_name = (user.role.name or "").lower()
+    return role_name in {r.lower() for r in roles}
+
+@csrf_exempt
+def mobile_login(request):
+    if request.method != "POST":
+        return _json_err("POST required", status=405)
+    try:
+        body = json.loads(request.body)
+        username = body.get("username", "").strip()
+        password = body.get("password", "")
+        user = User.objects.select_related("role").filter(username=username).first()
+        if user is None or not check_password(password, user.password):
+            return JsonResponse({"success": False, "message": "Invalid username or password"}, status=401)
+        if hasattr(user, "is_active") and not user.is_active:
+            return JsonResponse({"success": False, "message": "Account disabled"}, status=403)
+        user.etat = True
+        user.save(update_fields=["etat"])
+        request.session["app_user_id"] = user.id
+        request.session.save()
+        return JsonResponse({
+            "success": True,
+            # Same Django session key as Set-Cookie sessionid — Flutter Web
+            # stores it and sends X-Session-Id when Cookie cannot be set.
+            "sessionid": request.session.session_key,
+            "user": {
+                "id": user.id,
+                "username": user.username,
+                "email": user.email,
+                "role": user.role.name if user.role else "",
+                "specialite": user.specialite,
+                "first_login": user.first_login,
+                "phone": user.phone_number,
+                "address": user.adress,
+            },
+        })
+    except Exception as e:
+        return JsonResponse({"success": False, "message": str(e)}, status=500)
+
+@csrf_exempt
+@api_login_required
+def mobile_logout(request):
+    if request.method != "POST":
+        return _json_err("POST required", status=405)
+    try:
+        user = request.current_user
+        user.etat = False
+        user.save(update_fields=["etat"])
+    except Exception:
+        pass
+    request.session.flush()
+    return JsonResponse({"success": True, "message": "Logged out successfully"})
+
+@api_login_required
+def api_patients(request):
+    if request.method != "GET":
+        return _json_err("GET required", status=405)
+    qs = Patient.objects.all().order_by("last_name", "first_name")
+    search = request.GET.get("search", "").strip()
+    if search:
+        qs = qs.filter(
+            Q(first_name__icontains=search) |
+            Q(last_name__icontains=search) |
+            Q(telephone__icontains=search) |
+            Q(antecedents_medicaux__icontains=search)
+        )
+    data = [
+        {
+            "id": p.id,
+            "first_name": p.first_name,
+            "last_name": p.last_name,
+            "date_of_birth": str(p.date_of_birth) if p.date_of_birth else None,
+            "age": p.age,
+            "groupe_sanguin": p.groupe_sanguin,
+            "type_de_dialyse": p.type_de_dialyse,
+            "adresse": p.adresse,
+            "telephone": p.telephone,
+            "contact_urgence": p.contact_urgence,
+            "antecedents_medicaux": p.antecedents_medicaux,
+            "created_at": p.created_at.isoformat() if p.created_at else None,
+        }
+        for p in qs
+    ]
+    return _json_ok(data, count=len(data))
+
+@api_login_required
+def api_patient_detail(request, patient_id):
+    if request.method != "GET":
+        return _json_err("GET required", status=405)
+    try:
+        p = Patient.objects.get(id=patient_id)
+    except Patient.DoesNotExist:
+        return _json_err("Patient not found", status=404)
+    sessions = list(
+        Seance.objects.filter(patient=p)
+        .select_related("machine")
+        .order_by("-session_date")[:10]
+        .values("id", "session_date", "status", "duration", "machine__machine_id")
+    )
+    for s in sessions:
+        s["id"] = str(s["id"])
+        s["session_date"] = str(s["session_date"]) if s["session_date"] else None
+    data = {
+        "id": p.id,
+        "first_name": p.first_name,
+        "last_name": p.last_name,
+        "date_of_birth": str(p.date_of_birth) if p.date_of_birth else None,
+        "age": p.age,
+        "groupe_sanguin": p.groupe_sanguin,
+        "type_de_dialyse": p.type_de_dialyse,
+        "adresse": p.adresse,
+        "telephone": p.telephone,
+        "contact_urgence": p.contact_urgence,
+        "antecedents_medicaux": p.antecedents_medicaux,
+        "created_at": p.created_at.isoformat() if p.created_at else None,
+        "recent_sessions": sessions,
+    }
+    return _json_ok(data)
+
+def _raspi_info(machine):
+    try:
+        raspi = getattr(machine, "raspi", None)
+        if not raspi:
+            return None
+        return {
+            "raspi_id": raspi.raspi_id,
+            "description": raspi.description,
+            "is_active": raspi.is_active,
+            "last_seen": raspi.last_seen.isoformat() if raspi.last_seen else None,
+        }
+    except Exception:
+        return None
+
+@api_login_required
+def api_machines(request):
+    if request.method != "GET":
+        return _json_err("GET required", status=405)
+    machines = Machine.objects.all().order_by("machine_id")
+    data = [
+        {
+            "id": m.id,
+            "machine_id": m.machine_id,
+            "model": m.model,
+            "manufacturer": m.manufacturer,
+            "installation_date": str(m.installation_date) if m.installation_date else None,
+            "status": m.status,
+            "location": m.location,
+            "sessions": m.sessions,
+            "hours": m.hours,
+            "raspi": _raspi_info(m),
+        }
+        for m in machines
+    ]
+    return _json_ok(data, count=len(data))
+
+@api_login_required
+def api_machine_detail(request, machine_id):
+    if request.method != "GET":
+        return _json_err("GET required", status=405)
+    try:
+        m = Machine.objects.get(id=machine_id)
+    except Machine.DoesNotExist:
+        return _json_err("Machine not found", status=404)
+    active_seance = (
+        Seance.objects.filter(machine=m, status="en cours")
+        .select_related("patient")
+        .first()
+    )
+    active_session_data = None
+    if active_seance:
+        active_session_data = {
+            "id": str(active_seance.id),
+            "patient": str(active_seance.patient),
+            "session_date": str(active_seance.session_date),
+            "status": active_seance.status,
+        }
+    data = {
+        "id": m.id,
+        "machine_id": m.machine_id,
+        "model": m.model,
+        "manufacturer": m.manufacturer,
+        "installation_date": str(m.installation_date) if m.installation_date else None,
+        "status": m.status,
+        "location": m.location,
+        "sessions": m.sessions,
+        "hours": m.hours,
+        "raspi": _raspi_info(m),
+        "active_session": active_session_data,
+    }
+    return _json_ok(data)
+
+def _seance_summary(s):
+    readings = s.readings.all()
+    start_dt = None
+    end_dt = None
+    if s.session_date and s.start_hour:
+        start_dt = datetime.combine(s.session_date, s.start_hour)
+        end_dt = start_dt + timedelta(hours=s.duration)
+    return {
+        "id": str(s.id),
+        "patient": {
+            "id": s.patient.id,
+            "first_name": s.patient.first_name,
+            "last_name": s.patient.last_name,
+        } if s.patient else None,
+        "machine": {
+            "id": s.machine.id,
+            "machine_id": s.machine.machine_id,
+            "location": s.machine.location,
+            "status": s.machine.status,
+        } if s.machine else None,
+        "session_date": str(s.session_date) if s.session_date else None,
+        "start_hour": str(s.start_hour)[:5] if s.start_hour else None,
+        "duration": s.duration,
+        "notes": s.notes,
+        "status": s.status,
+        "complications": s.complications,
+        "debit": s.debit,
+        "start_datetime": start_dt.isoformat() if start_dt else None,
+        "end_datetime": end_dt.isoformat() if end_dt else None,
+        "nb_alertes": sum(reading.alertes.count() for reading in readings),
+        "avg_pa": readings.aggregate(Avg("PA"))["PA__avg"],
+        "avg_qb": readings.aggregate(Avg("Debit_sang"))["Debit_sang__avg"],
+        "avg_uf": readings.aggregate(Avg("Taux_UF"))["Taux_UF__avg"],
+    }
+
+@csrf_exempt
+@api_login_required
+def api_sessions(request):
+    if request.method == "GET":
+        return _api_sessions_list(request)
+    if request.method == "POST":
+        return _api_sessions_create(request)
+    return _json_err("Method not allowed", status=405)
+
+def _api_sessions_list(request):
+    qs = Seance.objects.select_related("patient", "machine").order_by("-session_date", "-start_hour")
+    status_filter = request.GET.get("status", "").strip()
+    if status_filter:
+        qs = qs.filter(status=status_filter)
+    patient_id = request.GET.get("patient_id", "").strip()
+    if patient_id:
+        qs = qs.filter(patient__id=patient_id)
+    machine_id = request.GET.get("machine_id", "").strip()
+    if machine_id:
+        qs = qs.filter(machine__id=machine_id)
+    date_filter = request.GET.get("date", "").strip()
+    if date_filter:
+        try:
+            qs = qs.filter(session_date=date.fromisoformat(date_filter))
+        except ValueError:
+            return _json_err("Invalid date format — use YYYY-MM-DD")
+    date_from = request.GET.get("date_from", "").strip()
+    if date_from:
+        try:
+            qs = qs.filter(session_date__gte=date.fromisoformat(date_from))
+        except ValueError:
+            return _json_err("Invalid date_from format — use YYYY-MM-DD")
+    date_to = request.GET.get("date_to", "").strip()
+    if date_to:
+        try:
+            qs = qs.filter(session_date__lte=date.fromisoformat(date_to))
+        except ValueError:
+            return _json_err("Invalid date_to format — use YYYY-MM-DD")
+    search = request.GET.get("search", "").strip()
+    if search:
+        qs = qs.filter(Q(patient__first_name__icontains=search) | Q(patient__last_name__icontains=search))
+    data = [_seance_summary(s) for s in qs[:100]]
+    return _json_ok(data, count=len(data))
+
+def _api_sessions_create(request):
+    current_user = request.current_user
+    if not _has_role(current_user, "Admin", "Docteur"):
+        return _json_err("Insufficient permissions — Doctor or Admin only", status=403)
+    try:
+        body = json.loads(request.body)
+    except (json.JSONDecodeError, ValueError):
+        return _json_err("Invalid JSON body")
+    patient_id = body.get("patient_id")
+    machine_db_id = body.get("machine_id")
+    session_date_str = body.get("session_date")
+    start_time = body.get("start_time")
+    duration = body.get("duration", 4)
+    notes = body.get("notes", "")
+    debit_val = body.get("debit", 60)
+    if not all([patient_id, session_date_str]):
+        return _json_err("patient_id and session_date are required")
+    VALID_DEBITS = {20, 30, 60}
+    try:
+        debit_val = int(debit_val)
+        if debit_val not in VALID_DEBITS:
+            raise ValueError
+    except (TypeError, ValueError):
+        return _json_err("debit must be 20, 30, or 60")
+    try:
+        session_date_obj = date.fromisoformat(session_date_str)
+    except (TypeError, ValueError):
+        return _json_err("Invalid session_date — use YYYY-MM-DD")
+    try:
+        patient = Patient.objects.get(id=patient_id)
+    except Patient.DoesNotExist:
+        return _json_err("Patient not found", status=404)
+    machine = None
+    if machine_db_id:
+        try:
+            machine = Machine.objects.get(id=machine_db_id)
+        except Machine.DoesNotExist:
+            return _json_err("Machine not found", status=404)
+    seance = Seance.objects.create(
+        patient=patient,
+        machine=machine,
+        session_date=session_date_obj,
+        start_hour=start_time,
+        duration=int(duration),
+        status="planifiée",
+        notes=notes,
+        debit=debit_val,
+    )
+    return JsonResponse({"success": True, "id": str(seance.id)}, status=201)
+
+@api_login_required
+def api_session_detail(request, session_id):
+    if request.method != "GET":
+        return _json_err("GET required", status=405)
+    try:
+        seance = Seance.objects.select_related("patient", "machine").get(id=session_id)
+    except Seance.DoesNotExist:
+        return _json_err("Session not found", status=404)
+    try:
+        pre = seance.pre_measurements
+        pre_data = {
+            "weight": pre.weight,
+            "blood_pressure": pre.blood_pressure,
+            "heart_rate": pre.heart_rate,
+            "temperature": pre.temperature,
+            "saturation": pre.saturation,
+        }
+    except PreSessionMeasurements.DoesNotExist:
+        pre_data = None
+    try:
+        post = seance.post_measurements
+        post_data = {
+            "weight": post.weight,
+            "blood_pressure": post.blood_pressure,
+            "heart_rate": post.heart_rate,
+            "temperature": post.temperature,
+            "saturation": post.saturation,
+        }
+    except PostSessionMeasurements.DoesNotExist:
+        post_data = None
+    thresholds = {
+        "blood_flow_min": seance.blood_flow_min,
+        "blood_flow_max": seance.blood_flow_max,
+        "blood_flow_critical_low": seance.blood_flow_critical_low,
+        "blood_flow_critical_high": seance.blood_flow_critical_high,
+        "arterial_pressure_min": seance.arterial_pressure_min,
+        "arterial_pressure_max": seance.arterial_pressure_max,
+        "arterial_pressure_critical_low": seance.arterial_pressure_critical_low,
+        "arterial_pressure_critical_high": seance.arterial_pressure_critical_high,
+        "venous_pressure_min": seance.venous_pressure_min,
+        "venous_pressure_max": seance.venous_pressure_max,
+        "venous_pressure_critical_low": seance.venous_pressure_critical_low,
+        "venous_pressure_critical_high": seance.venous_pressure_critical_high,
+        "tmp_min": seance.tmp_min,
+        "tmp_max": seance.tmp_max,
+        "tmp_critical_low": seance.tmp_critical_low,
+        "tmp_critical_high": seance.tmp_critical_high,
+        "uf_rate_min": seance.uf_rate_min,
+        "uf_rate_max": seance.uf_rate_max,
+        "uf_rate_critical_high": seance.uf_rate_critical_high,
+        "uf_volume_min": seance.uf_volume_min,
+        "uf_volume_max": seance.uf_volume_max,
+        "uf_volume_critical_high": seance.uf_volume_critical_high,
+        "heparin_min": seance.heparin_min,
+        "heparin_max": seance.heparin_max,
+        "heparin_critical_high": seance.heparin_critical_high,
+        "debit": seance.debit,
+    }
+    alerts_data = [
+        {
+            "id": a.id,
+            "alert_type": a.alert_type,
+            "message": a.message,
+            "danger_level": a.danger_level,
+            "recommended_action": a.recommended_action,
+            "timestamp": a.timestamp.isoformat() if a.timestamp else None,
+        }
+        for a in SeanceAlert.objects.filter(seance=seance).order_by("-timestamp")
+    ]
+    readings = seance.readings.order_by("timestamp")
+    start_dt = None
+    if seance.session_date and seance.start_hour:
+        start_dt = datetime.combine(seance.session_date, seance.start_hour)
+    chart_data = []
+    for r in readings:
+        elapsed_min = 0
+        if start_dt and r.timestamp:
+            ts = r.timestamp.replace(tzinfo=None)
+            elapsed_min = max(0, int((ts - start_dt).total_seconds() / 60))
+        chart_data.append({
+            "time": elapsed_min,
+            "qb": r.Debit_sang,
+            "pa": r.PA,
+            "ptm": r.PTM,
+            "pv": r.PV,
+            "uf_rate": r.Taux_UF,
+            "uf_volume": r.Volume_UF,
+            "heparin": r.Heparine,
+        })
+    last_reading = readings.last()
+    last_reading_data = None
+    if last_reading is not None:
+        last_reading_data = {
+            "volume_uf": last_reading.Volume_UF,
+            "debit_sang": last_reading.Debit_sang,
+        }
+    try:
+        rapport = seance.rapport
+        rapport_data = {
+            "qualite_seance": rapport.qualite_seance,
+            "nom_fichier": rapport.nom_fichier,
+        }
+    except Exception:
+        rapport_data = None
+    data = {
+        **_seance_summary(seance),
+        "pre_measurements": pre_data,
+        "post_measurements": post_data,
+        "thresholds": thresholds,
+        "alerts": alerts_data,
+        "rapport": rapport_data,
+        "readings": chart_data,
+        "readings_count": readings.count(),
+        "last_reading": last_reading_data,
+    }
+    return _json_ok(data)
+
+@csrf_exempt
+@api_login_required
+def api_session_start(request, session_id):
+    if request.method != "POST":
+        return _json_err("POST required", status=405)
+    current_user = request.current_user
+    if not _has_role(current_user, "Admin", "Infirmier", "Docteur"):
+        return _json_err("Insufficient permissions", status=403)
+    try:
+        seance = Seance.objects.select_related("machine").get(id=session_id)
+    except Seance.DoesNotExist:
+        return _json_err("Session not found", status=404)
+    if seance.status != "planifiée":
+        return _json_err(f"Session cannot be started — current status: {seance.status}")
+    try:
+        body = json.loads(request.body)
+    except (json.JSONDecodeError, ValueError):
+        body = {}
+    obj, _ = PreSessionMeasurements.objects.get_or_create(seance=seance)
+    obj.weight = body.get("weight", obj.weight)
+    obj.blood_pressure = body.get("blood_pressure", obj.blood_pressure)
+    obj.temperature = body.get("temperature", obj.temperature)
+    obj.heart_rate = body.get("heart_rate", obj.heart_rate)
+    obj.saturation = body.get("saturation", obj.saturation)
+    obj.save()
+
+    # Same seuil fields as seances.views.pre_session_page (Django web form).
+    seuil_fields = [
+        "blood_flow_min", "blood_flow_max",
+        "blood_flow_critical_low", "blood_flow_critical_high",
+        "arterial_pressure_min", "arterial_pressure_max",
+        "arterial_pressure_critical_low", "arterial_pressure_critical_high",
+        "venous_pressure_min", "venous_pressure_max",
+        "venous_pressure_critical_low", "venous_pressure_critical_high",
+        "tmp_min", "tmp_max", "tmp_critical_low", "tmp_critical_high",
+        "uf_rate_min", "uf_rate_max", "uf_rate_critical_high",
+        "uf_volume_min", "uf_volume_max", "uf_volume_critical_high",
+        "heparin_min", "heparin_max", "heparin_critical_high",
+    ]
+    fields_to_update = ["status"]
+    for field in seuil_fields:
+        if field in body and body[field] is not None:
+            try:
+                setattr(seance, field, float(body[field]))
+                fields_to_update.append(field)
+            except (TypeError, ValueError):
+                pass
+
+    VALID_DEBITS = {20, 30, 60}
+    new_debit = body.get("debit")
+    if new_debit is not None:
+        try:
+            new_debit = int(new_debit)
+            if new_debit in VALID_DEBITS and new_debit != seance.debit:
+                seance.debit = new_debit
+                fields_to_update.append("debit")
+        except (TypeError, ValueError):
+            pass
+    seance.status = "en cours"
+    seance.save(update_fields=fields_to_update)
+    if seance.machine:
+        machine = seance.machine
+        machine.sessions += 1
+        machine.hours += seance.duration
+        machine.status = "Reserve"
+        machine.save(update_fields=["sessions", "hours", "status"])
+    return _json_ok(message="Session started successfully")
+
+@csrf_exempt
+@api_login_required
+def api_session_end(request, session_id):
+    if request.method != "POST":
+        return _json_err("POST required", status=405)
+    current_user = request.current_user
+    if not _has_role(current_user, "Admin", "Infirmier", "Docteur"):
+        return _json_err("Insufficient permissions", status=403)
+    try:
+        seance = Seance.objects.select_related("machine").get(id=session_id)
+    except Seance.DoesNotExist:
+        return _json_err("Session not found", status=404)
+    if seance.status != "en cours":
+        return _json_err(f"Session cannot be ended — current status: {seance.status}")
+    try:
+        body = json.loads(request.body)
+    except (json.JSONDecodeError, ValueError):
+        body = {}
+    obj, _ = PostSessionMeasurements.objects.get_or_create(seance=seance)
+    obj.weight = body.get("weight", obj.weight)
+    obj.blood_pressure = body.get("blood_pressure", obj.blood_pressure)
+    obj.temperature = body.get("temperature", obj.temperature)
+    obj.heart_rate = body.get("heart_rate", obj.heart_rate)
+    obj.saturation = body.get("saturation", obj.saturation)
+    obj.save()
+    seance.complications = body.get("complications", seance.complications or "")
+    seance.status = "terminée"
+    seance.save(update_fields=["status", "complications"])
+    if seance.machine:
+        seance.machine.status = "Prete"
+        seance.machine.save(update_fields=["status"])
+    return _json_ok(message="Session ended successfully")
+
+@csrf_exempt
+@api_login_required
+def api_session_cancel(request, session_id):
+    if request.method != "POST":
+        return _json_err("POST required", status=405)
+    try:
+        seance = Seance.objects.get(id=session_id)
+    except Seance.DoesNotExist:
+        return _json_err("Session not found", status=404)
+    if seance.status != "planifiée":
+        return _json_err("Only planned sessions can be cancelled")
+    seance.status = "annulée"
+    seance.save(update_fields=["status"])
+    return _json_ok(message="Session cancelled")
+
+@api_login_required
+def api_alerts(request):
+    if request.method != "GET":
+        return _json_err("GET required", status=405)
+    seance_alerts = SeanceAlert.objects.select_related("seance__patient", "seance__machine").order_by("-timestamp")
+    level_filter = request.GET.get("level", "").strip().upper()
+    status_filter = request.GET.get("status", "").strip().upper()
+    session_id = request.GET.get("session_id", "").strip()
+    date_filter = request.GET.get("date", "").strip()
+    if level_filter in ("LOW", "MEDIUM", "HIGH"):
+        seance_alerts = seance_alerts.filter(danger_level=level_filter)
+    if session_id:
+        seance_alerts = seance_alerts.filter(seance__id=session_id)
+    if date_filter:
+        try:
+            seance_alerts = seance_alerts.filter(timestamp__date=date.fromisoformat(date_filter))
+        except ValueError:
+            return _json_err("Invalid date format — use YYYY-MM-DD")
+    data = []
+    for a in seance_alerts[:150]:
+        data.append({
+            "id": a.id,
+            "source": "seances.Alert",
+            "session_id": str(a.seance.id),
+            "patient": str(a.seance.patient) if a.seance.patient else None,
+            "machine": a.seance.machine.machine_id if a.seance.machine else None,
+            "alert_type": a.alert_type,
+            "message": a.message,
+            "danger_level": a.danger_level,
+            "severity": a.danger_level,
+            "recommended_action": a.recommended_action,
+            "status": "NEW",
+            "timestamp": a.timestamp.isoformat() if a.timestamp else None,
+            "created_at": a.timestamp.isoformat() if a.timestamp else None,
+        })
+    m_alerts = Alerte.objects.select_related("reading__seance__patient", "reading__seance__machine").order_by("-timestamp")
+    if status_filter in ("NEW", "ACK", "RESOLVED"):
+        m_alerts = m_alerts.filter(status=status_filter)
+    if session_id:
+        m_alerts = m_alerts.filter(reading__seance__id=session_id)
+    if date_filter:
+        try:
+            m_alerts = m_alerts.filter(timestamp__date=date.fromisoformat(date_filter))
+        except ValueError:
+            pass
+    for ma in m_alerts[:100]:
+        seance = ma.reading.seance if ma.reading else None
+        sev = ma.niveau.upper()
+        if sev == "RED":
+            sev = "HIGH"
+        elif sev == "YELLOW":
+            sev = "MEDIUM"
+        data.append({
+            "id": str(ma.id),
+            "source": "monitoring.Alerte",
+            "session_id": str(seance.id) if seance else None,
+            "patient": str(seance.patient) if seance and seance.patient else None,
+            "machine": seance.machine.machine_id if seance and seance.machine else None,
+            "alert_type": "Measurement Threshold",
+            "message": ma.message,
+            "danger_level": sev,
+            "severity": sev,
+            "recommended_action": "Check patient status and machine parameters",
+            "status": ma.status,
+            "timestamp": ma.timestamp.isoformat() if ma.timestamp else None,
+            "created_at": ma.timestamp.isoformat() if ma.timestamp else None,
+        })
+    return _json_ok(data, count=len(data))
+
+@csrf_exempt
+@api_login_required
+def api_alert_ack(request, alert_id):
+    if request.method != "POST":
+        return _json_err("POST required", status=405)
+    try:
+        m_alert = Alerte.objects.get(id=alert_id)
+        m_alert.status = "ACK"
+        m_alert.save(update_fields=["status"])
+        return _json_ok(message="Alert acknowledged")
+    except Alerte.DoesNotExist:
+        try:
+            alert_int_id = int(alert_id)
+            s_alert = SeanceAlert.objects.get(id=alert_int_id)
+            return _json_ok(message="Alert acknowledged")
+        except (ValueError, SeanceAlert.DoesNotExist):
+            return _json_err("Alert not found", status=404)
+
+@csrf_exempt
+@api_login_required
+def api_alert_resolve(request, alert_id):
+    if request.method != "POST":
+        return _json_err("POST required", status=405)
+    try:
+        m_alert = Alerte.objects.get(id=alert_id)
+        m_alert.status = "RESOLVED"
+        m_alert.save(update_fields=["status"])
+        return _json_ok(message="Alert resolved")
+    except Alerte.DoesNotExist:
+        return _json_err("Alert not found", status=404)
+
+@api_login_required
+def api_dashboard(request):
+    if request.method != "GET":
+        return _json_err("GET required", status=405)
+    today = timezone.localdate()
+    kpis = {
+        "active_sessions": Seance.objects.filter(status="en cours").count(),
+        "available_machines": Machine.objects.filter(status="Prete").count(),
+        "total_machines": Machine.objects.count(),
+        "active_alerts": Alerte.objects.filter(status="NEW").count(),
+        "patients_count": Patient.objects.count(),
+        "today_sessions": Seance.objects.filter(session_date=today).count(),
+    }
+    return JsonResponse({"success": True, "kpis": kpis})
+
+def api_seance_debit(request):
+    if request.method != "GET":
+        return _json_err("GET required", status=405)
+    machine_id = request.GET.get("machine_id", "").strip()
+    if not machine_id:
+        return _json_err("machine_id query parameter is required")
+    try:
+        machine = Machine.objects.get(machine_id=machine_id)
+    except Machine.DoesNotExist:
+        return _json_err("Machine not found", status=404)
+    seance = Seance.objects.filter(machine=machine, status="en cours").first()
+    if not seance:
+        return JsonResponse({
+            "debit": 60,
+            "machine_id": machine_id,
+            "seance_id": None,
+            "note": "No active session — using default interval",
+        })
+    return JsonResponse({"debit": seance.debit, "machine_id": machine_id, "seance_id": str(seance.id)})
 
 @csrf_exempt
 def push_measurement(request):
-
     if request.method != "POST":
-        return JsonResponse(
-            {"error": "POST required"},
-            status=405
-        )
-
+        return _json_err("POST required", status=405)
     try:
         data = json.loads(request.body)
-
         machine_id = data.get("machine_id")
-
-        machine = Machine.objects.get(
-            machine_id=machine_id
-        )
-
-
-        seance = Seance.objects.filter(
-            machine=machine,
-            status="en cours"
-        ).first()
-
-
+        machine = Machine.objects.get(machine_id=machine_id)
+        seance = Seance.objects.filter(machine=machine, status="en cours").first()
         if not seance:
-            return JsonResponse(
-                {
-                    "error": "No active seance for this machine"
-                },
-                status=400
-            )
-
-
+            return _json_err("No active seance for this machine", status=400)
         measurement = LiveMeasurement.objects.create(
-
             seance=seance,
-
             Debit_sang=data.get("Qb"),
             Taux_UF=data.get("UF_rate"),
             PA=data.get("PA"),
@@ -53,115 +779,233 @@ def push_measurement(request):
             PV=data.get("PV"),
             Volume_UF=data.get("UF_volume"),
             Heparine=data.get("Heparin"),
-
         )
-
-
-        return JsonResponse(
-            {
-                "success": True,
-                "id": measurement.id
-            }
-        )
-
-
+        monitoring_alerts = check_thresholds(measurement)
+        dedup_cutoff = timezone.now() - timedelta(minutes=5)
+        for niveau, message in monitoring_alerts:
+            already = Alerte.objects.filter(
+                reading__seance=seance,
+                niveau=niveau,
+                message=message,
+                timestamp__gte=dedup_cutoff,
+            ).exists()
+            if not already:
+                Alerte.objects.create(reading=measurement, niveau=niveau, message=message)
+        seance_alerts_created = 0
+        try:
+            from monitoring.alerte import analyser_mesure
+            rich_alerts = analyser_mesure(measurement)
+            for al in rich_alerts:
+                already = SeanceAlert.objects.filter(
+                    seance=seance,
+                    alert_type=al["alert_type"],
+                    danger_level=al["danger_level"],
+                    timestamp__gte=dedup_cutoff,
+                ).exists()
+                if not already:
+                    SeanceAlert.objects.create(
+                        seance=seance,
+                        alert_type=al["alert_type"],
+                        message=al["message"],
+                        danger_level=al["danger_level"],
+                        recommended_action=al["recommended_action"],
+                    )
+                    seance_alerts_created += 1
+        except Exception:
+            pass
+        return JsonResponse({
+            "success": True,
+            "id": str(measurement.id),
+            "monitoring_alerts_created": len(monitoring_alerts),
+            "seance_alerts_created": seance_alerts_created,
+        })
     except Machine.DoesNotExist:
-
-        return JsonResponse(
-            {
-                "error":"Machine not found"
-            },
-            status=404
-        )
-
-
+        return _json_err("Machine not found", status=404)
     except Exception as e:
-
-        return JsonResponse(
-            {
-                "error":str(e)
-            },
-            status=500
-        )
-
-
+        return _json_err(str(e), status=500)
 
 def real_monitoring(request):
-
-    measurements = LiveMeasurement.objects.all().order_by("-timestamp")[:20]
-
+    measurements = LiveMeasurement.objects.select_related("seance__machine", "seance__patient").order_by("-timestamp")[:20]
     data = []
-
     for m in measurements:
-
+        alerts = list(m.alertes.values("id", "niveau", "message", "status", "timestamp"))
+        for a in alerts:
+            a["id"] = str(a["id"])
+            if a.get("timestamp"):
+                a["timestamp"] = a["timestamp"].isoformat()
         data.append({
-
-            "machine": str(m.seance.machine),
-            "Qb": m.Debit_sang,
+            "id": str(m.id),
+            "machine": str(m.seance.machine) if m.seance.machine else None,
+            "machine_id": m.seance.machine.machine_id if m.seance.machine else None,
+            "patient": str(m.seance.patient) if m.seance.patient else None,
+            "seance_id": str(m.seance.id),
+            "timestamp": m.timestamp.isoformat() if m.timestamp else None,
+            "Debit_sang": m.Debit_sang,
+            "Taux_UF": m.Taux_UF,
             "PA": m.PA,
             "PTM": m.PTM,
             "PV": m.PV,
-            "UF": m.Volume_UF,
-            "time": m.timestamp
-
+            "Volume_UF": m.Volume_UF,
+            "Heparine": m.Heparine,
+            "alerts": alerts,
         })
+    return JsonResponse({"success": True, "measurements": data})
 
+@api_login_required
+def api_monitoring_live(request):
+    if request.method != "GET":
+        return _json_err("GET required", status=405)
+    active_seances = Seance.objects.filter(status="en cours").select_related("patient", "machine")
+    sessions_data = []
+    for seance in active_seances:
+        last = LiveMeasurement.objects.filter(seance=seance).order_by("-timestamp").first()
+        if last:
+            sessions_data.append({
+                "seance_id": str(seance.id),
+                "patient": str(seance.patient) if seance.patient else None,
+                "machine": seance.machine.machine_id if seance.machine else None,
+                "debit": seance.debit,
+                "Debit_sang": last.Debit_sang,
+                "Taux_UF": last.Taux_UF,
+                "PA": last.PA,
+                "PTM": last.PTM,
+                "PV": last.PV,
+                "Volume_UF": last.Volume_UF,
+                "Heparine": last.Heparine,
+                "timestamp": last.timestamp.isoformat() if last.timestamp else None,
+            })
+    recent_alerts = list(Alerte.objects.filter(status="NEW").order_by("-timestamp")[:20].values("id", "niveau", "message", "status", "timestamp"))
+    for a in recent_alerts:
+        a["id"] = str(a["id"])
+        if a.get("timestamp"):
+            a["timestamp"] = a["timestamp"].isoformat()
+    return JsonResponse({
+        "success": True,
+        "sessions": sessions_data,
+        "alerts": recent_alerts,
+        "last_update": timezone.now().isoformat(),
+    })
+
+def _measurement_payload(measurement):
+    """Maps a LiveMeasurement to the Qb/PA/PTM/PV/UF boxes + machine/status
+    block used by the monitoring dashboard (monitoring/templates/dashboard.html)."""
+    alert_levels = {
+        (a.niveau or "").upper()
+        for a in measurement.alertes.filter(status="NEW")
+    }
+    if alert_levels & {"HIGH", "RED"}:
+        status_label = "CRITICAL"
+    elif alert_levels & {"MEDIUM", "YELLOW"}:
+        status_label = "WARNING"
+    else:
+        status_label = "NORMAL"
+    return {
+        "machine": str(measurement.seance.machine) if measurement.seance and measurement.seance.machine else None,
+        "machine_id": measurement.seance.machine.machine_id if measurement.seance and measurement.seance.machine else None,
+        "patient": str(measurement.seance.patient) if measurement.seance and measurement.seance.patient else None,
+        "Qb": measurement.Debit_sang,
+        "PA": measurement.PA,
+        "PTM": measurement.PTM,
+        "PV": measurement.PV,
+        "UF": measurement.Volume_UF,
+        "status": status_label,
+        "time": measurement.timestamp.isoformat() if measurement.timestamp else None,
+    }
+
+
+@api_login_required
+def api_monitoring(request):
+    """Mobile counterpart of the /monitoring/ dashboard page.
+
+    Reproduces `monitoring/views.py dashboard()`: the KPI cards, the live
+    dialysis measurement block, the real-time alerts and the login/logout
+    history table (with the same day/q/role/sort/status filters).
+    """
+    if request.method != "GET":
+        return _json_err("GET required", status=405)
+
+    # KPIs — identical querysets to the web dashboard.
+    kpis = {
+        "doctors": User.objects.filter(role__name__in=["Docteur", "Admin"]).count(),
+        "nurses": User.objects.filter(role__name__iexact="Infirmier").count(),
+        "active_users": User.objects.filter(etat=True).count(),
+        "machines_available": Machine.objects.filter(status="Prete").count(),
+        "machines_total": Machine.objects.count(),
+    }
+
+    # Login/logout history — identical filters/sorting to the web dashboard.
+    selected_day = (request.GET.get("day") or "").strip()
+    q = (request.GET.get("q") or "").strip()
+    role_filter = (request.GET.get("role") or "").strip()
+    sort = (request.GET.get("sort") or "-login_at").strip()
+    status = (request.GET.get("status") or "").strip()
+
+    allowed_sorts = {"login_at", "-login_at", "username", "-username"}
+    if sort not in allowed_sorts:
+        sort = "-login_at"
+
+    qs = UserActivity.objects.select_related("user", "user__role")
+    if selected_day:
+        qs = qs.filter(login_at__date=selected_day)
+    if q:
+        qs = qs.filter(
+            Q(user__username__icontains=q) |
+            Q(user__email__icontains=q)
+        )
+    if role_filter in ("Docteur", "Infirmier", "Admin"):
+        qs = qs.filter(user__role__name__iexact=role_filter)
+    if sort in ("username", "-username"):
+        prefix = "-" if sort.startswith("-") else ""
+        qs = qs.order_by(f"{prefix}user__username", "-login_at")
+    else:
+        qs = qs.order_by(sort)
+    if status == "ongoing":
+        qs = qs.filter(logout_at__isnull=True)
+
+    activity = [
+        {
+            "username": a.user.username,
+            "email": a.user.email or "",
+            "role": a.user.role.name if a.user.role else "",
+            "login_at": a.login_at.isoformat() if a.login_at else None,
+            "logout_at": a.logout_at.isoformat() if a.logout_at else None,
+        }
+        for a in qs[:50]
+    ]
+
+    # Live measurement — latest reading drives the Qb/PA/PTM/PV/UF boxes.
+    last = (
+        LiveMeasurement.objects
+        .select_related("seance__machine", "seance__patient")
+        .order_by("-timestamp")
+        .first()
+    )
+    measurement = _measurement_payload(last) if last else None
+
+    recent_alerts = (
+        Alerte.objects
+        .select_related("reading__seance__machine")
+        .order_by("-timestamp")[:20]
+    )
+    alerts = [
+        {
+            "id": str(a.id),
+            "niveau": a.niveau,
+            "message": a.message,
+            "status": a.status,
+            "machine": a.reading.seance.machine.machine_id
+            if a.reading and a.reading.seance and a.reading.seance.machine
+            else None,
+            "time": a.timestamp.isoformat() if a.timestamp else None,
+        }
+        for a in recent_alerts
+    ]
 
     return JsonResponse({
-        "measurements": data
+        "success": True,
+        "kpis": kpis,
+        "measurement": measurement,
+        "alerts": alerts,
+        "activity": activity,
+        "last_update": timezone.now().isoformat(),
     })
-from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
-from django.contrib.auth.hashers import check_password
-from accounts.models import User
-import json
-
-
-@csrf_exempt
-def mobile_login(request):
-
-    if request.method != "POST":
-        return JsonResponse(
-            {"success": False, "message": "POST only"},
-            status=405
-        )
-
-    try:
-        body = json.loads(request.body)
-
-        username = body.get("username", "").strip()
-        password = body.get("password", "")
-
-        user = User.objects.filter(username=username).first()
-
-        if user is None:
-            return JsonResponse({
-                "success": False,
-                "message": "Invalid username"
-            })
-
-        if not check_password(password, user.password):
-            return JsonResponse({
-                "success": False,
-                "message": "Invalid password"
-            })
-
-        user.etat = True
-        user.save()
-        request.session['app_user_id'] = user.id
-
-        return JsonResponse({
-            "success": True,
-            "user": {
-                "id": user.id,
-                "username": user.username,
-                "email": user.email,
-                "role": user.role.name,
-            }
-        })
-
-    except Exception as e:
-        return JsonResponse({
-            "success": False,
-            "message": str(e)
-        }, status=500)

@@ -11,13 +11,23 @@ class AuthRepositoryImpl implements AuthRepository {
 
   @override
   Future<UserEntity> login(String username, String password) async {
-    final userModel = await _remoteDatasource.login(username, password);
+    final result = await _remoteDatasource.login(username, password);
+    final userModel = result.user;
 
     await _storageService.saveUserSession(
       userId: userModel.id,
       username: userModel.username,
       email: userModel.email,
       role: userModel.role,
+      phone: userModel.phone,
+      address: userModel.address,
+      specialite: userModel.specialite,
+      firstLogin: userModel.firstLogin,
+      // Persist Django session key so ApiClient can authenticate monitoring
+      // and every other protected call (including Flutter Web).
+      cookie: result.sessionId != null && result.sessionId!.isNotEmpty
+          ? 'sessionid=${result.sessionId}'
+          : null,
     );
 
     return userModel.toEntity();
@@ -34,10 +44,25 @@ class AuthRepositoryImpl implements AuthRepository {
     final userId = await _storageService.getUserId();
     final username = await _storageService.getUsername();
     final role = await _storageService.getUserRole();
+    final cookie = await _storageService.getSessionCookie();
 
-    if (userId != null && username != null && role != null) {
-      return UserEntity(id: userId, username: username, role: role);
+    if (userId == null ||
+        username == null ||
+        role == null ||
+        cookie == null ||
+        cookie.isEmpty) {
+      return null;
     }
-    return null;
+
+    return UserEntity(
+      id: userId,
+      username: username,
+      email: await _storageService.getUserEmail(),
+      role: role,
+      phone: await _storageService.getUserPhone(),
+      address: await _storageService.getUserAddress(),
+      specialite: await _storageService.getUserSpecialite(),
+      firstLogin: await _storageService.getFirstLogin(),
+    );
   }
 }

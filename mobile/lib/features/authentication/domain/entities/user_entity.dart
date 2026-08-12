@@ -19,7 +19,18 @@ class UserEntity {
     this.firstLogin = false,
   });
 
-  bool get isDoctor => role.toLowerCase() == 'docteur';
-  bool get isNurse => role.toLowerCase() == 'infirmier';
-  bool get isAdmin => role.toLowerCase() == 'admin';
+  bool get isDoctor {
+    final r = role.trim().toLowerCase();
+    return r == 'docteur' || r == 'doctor';
+  }
+
+  bool get isNurse {
+    final r = role.trim().toLowerCase();
+    return r == 'infirmier' || r == 'nurse';
+  }
+
+  bool get isAdmin {
+    final r = role.trim().toLowerCase();
+    return r == 'admin';
+  }
 }
