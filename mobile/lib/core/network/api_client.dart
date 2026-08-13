@@ -119,9 +119,33 @@ class ApiClient {
     }
   }
 
-  Future<Response> post(String path, {dynamic data}) async {
+   Future<Response> post(String path, {dynamic data}) async {
     try {
       return await _dio.post(path, data: data);
+    } on DioException catch (e) {
+      throw e.error as ApiException? ??
+          ApiException(e.message ?? 'Network error');
+    }
+  }
+
+  Future<Response> put(
+    String path, {
+    dynamic data,
+  }) async {
+    try {
+      return await _dio.put(
+        path,
+        data: data,
+      );
+    } on DioException catch (e) {
+      throw e.error as ApiException? ??
+          ApiException(e.message ?? 'Network error');
+    }
+  }
+
+  Future<Response> delete(String path) async {
+    try {
+      return await _dio.delete(path);
     } on DioException catch (e) {
       throw e.error as ApiException? ??
           ApiException(e.message ?? 'Network error');

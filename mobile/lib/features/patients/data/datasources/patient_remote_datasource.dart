@@ -9,46 +9,89 @@ class PatientRemoteDatasource {
 
   PatientRemoteDatasource(this._apiClient);
 
-  /// GET /api/patients/?search=<query>
-  ///
-  /// Django wraps the payload as { success: true, data: [...], count: N }.
-  /// Returns the parsed patients plus the `count` returned by Django.
   Future<({List<PatientModel> items, int total})> getPatients({
     String search = '',
   }) async {
     final response = await _apiClient.get(
       ApiEndpoints.patients,
-      queryParameters: search.trim().isEmpty ? null : {'search': search.trim()},
+      queryParameters: search.trim().isEmpty
+          ? null
+          : {'search': search.trim()},
     );
+
     final data = response.data;
+
     if (data is Map<String, dynamic> && data['success'] == true) {
       final rawList = data['data'];
+
       if (rawList is List) {
         final items = rawList
             .whereType<Map<String, dynamic>>()
             .map(PatientModel.fromJson)
             .toList();
-        final total = (data['count'] as num?)?.toInt() ?? items.length;
-        return (items: items, total: total);
+
+        final total =
+            (data['count'] as num?)?.toInt() ?? items.length;
+
+        return (
+          items: items,
+          total: total,
+        );
       }
     }
-    throw ApiException('Format de réponse invalide pour la liste des patients');
+
+    throw ApiException(
+      'Format de réponse invalide pour la liste des patients',
+    );
   }
 
-  /// GET /api/patients/<id>/
-  ///
-  /// Django wraps the payload as { success: true, data: { ... } } where data
-  /// contains the patient fields plus `recent_sessions`.
   Future<PatientDetailModel> getPatient(int patientId) async {
     final response = await _apiClient.get(
       '${ApiEndpoints.patientDetail}$patientId/',
     );
+
     final data = response.data;
+
     if (data is Map<String, dynamic> &&
         data['success'] == true &&
         data['data'] is Map<String, dynamic>) {
-      return PatientDetailModel.fromJson(data['data'] as Map<String, dynamic>);
+      return PatientDetailModel.fromJson(
+        data['data'] as Map<String, dynamic>,
+      );
     }
-    throw ApiException('Format de réponse invalide pour le patient');
+
+    throw ApiException(
+      'Format de réponse invalide pour le patient',
+    );
+  }
+
+  Future<PatientDetailModel> updatePatient(
+    int patientId,
+    Map<String, dynamic> data,
+  ) async {
+    final response = await _apiClient.put(
+      '${ApiEndpoints.patientDetail}$patientId/',
+      data: data,
+    );
+
+    final body = response.data;
+
+    if (body is Map<String, dynamic> &&
+        body['success'] == true &&
+        body['data'] is Map<String, dynamic>) {
+      return PatientDetailModel.fromJson(
+        body['data'] as Map<String, dynamic>,
+      );
+    }
+
+    throw ApiException(
+      'Format de réponse invalide pour la modification',
+    );
+  }
+
+  Future<void> deletePatient(int patientId) async {
+    await _apiClient.delete(
+      '${ApiEndpoints.patientDetail}$patientId/',
+    );
   }
 }
