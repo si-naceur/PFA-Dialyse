@@ -50,7 +50,7 @@ class MeasurementPanel extends StatelessWidget {
               const SizedBox(width: 8),
               Expanded(
                 child: Container(
-                  height: 86,
+                  height: 90,
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
                     color: const Color(0xFFF8FAFC),
@@ -105,7 +105,7 @@ class _MetricBox extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 86,
+      height: 90,
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
         color: Colors.white,
