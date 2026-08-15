@@ -32,7 +32,7 @@ class SeancesRepositoryImpl implements SeancesRepository {
 
   @override
   Future<String> createSession({
-    required int patientId,
+    required String patientId,
     required int machineId,
     required String sessionDate,
     required String startTime,

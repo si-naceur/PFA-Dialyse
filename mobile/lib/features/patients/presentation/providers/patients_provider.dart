@@ -56,8 +56,7 @@ final patientsProvider =
     );
 
 /// Patient dossier backed by GET /api/patients/<id>/.
-/// Patient dossier backed by GET /api/patients/<id>/.
-final patientDetailProvider = FutureProvider.family<PatientDetailEntity, int>((
+final patientDetailProvider = FutureProvider.family<PatientDetailEntity, String>((
   ref,
   patientId,
 ) {
@@ -67,7 +66,7 @@ final patientDetailProvider = FutureProvider.family<PatientDetailEntity, int>((
 
 final patientUpdateProvider =
     Provider<Future<PatientDetailEntity> Function(
-  int,
+  String,
   Map<String, dynamic>,
 )>((ref) {
   final repository = ref.watch(patientRepositoryProvider);

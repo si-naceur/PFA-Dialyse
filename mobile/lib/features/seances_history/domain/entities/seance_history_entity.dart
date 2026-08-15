@@ -3,7 +3,7 @@
 class SeanceHistoryEntity {
   final String id;
   final String patientName;
-  final int? patientId;
+  final String? patientId;
   final String machineId;
   final String? sessionDate;
   final String? startTime;

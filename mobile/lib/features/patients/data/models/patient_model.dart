@@ -1,7 +1,7 @@
 import '../../domain/entities/patient_entity.dart';
 
 class PatientModel {
-  final int id;
+  final String id;
   final String firstName;
   final String lastName;
   final String? dateOfBirth;
@@ -31,7 +31,7 @@ class PatientModel {
 
   factory PatientModel.fromJson(Map<String, dynamic> json) {
     return PatientModel(
-      id: (json['id'] as num).toInt(),
+      id: json['id']?.toString() ?? '',
       firstName: json['first_name'] as String? ?? '',
       lastName: json['last_name'] as String? ?? '',
       dateOfBirth: json['date_of_birth'] as String?,

@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/patients_provider.dart';
 
 class PatientEditPage extends ConsumerStatefulWidget {
-  final int patientId;
+  final String patientId;
 
   const PatientEditPage({super.key, required this.patientId});
 

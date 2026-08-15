@@ -6,12 +6,18 @@ import '../../features/authentication/domain/entities/user_entity.dart';
 import '../../features/authentication/presentation/pages/login_page.dart';
 import '../../features/dashboard/presentation/dashboard_page.dart';
 import '../../features/machines/presentation/pages/machine_detail_page.dart';
+import '../../features/machines/presentation/pages/machine_config_page.dart';
 import '../../features/machines/presentation/pages/machines_page.dart';
 import '../../features/monitoring/presentation/pages/monitoring_page.dart';
+import '../../features/devices/presentation/pages/devices_page.dart';
+import '../../features/patients/presentation/pages/patient_add_page.dart';
 import '../../features/patients/presentation/pages/patient_detail_page.dart';
 import '../../features/patients/presentation/pages/patient_edit_page.dart';
 import '../../features/patients/presentation/pages/patients_page.dart';
 import '../../features/profile/presentation/pages/profile_page.dart';
+import '../../features/staff/presentation/pages/doctors_page.dart';
+import '../../features/staff/presentation/pages/nurses_page.dart';
+import '../../features/staff/presentation/pages/staff_detail_page.dart';
 import '../../features/seances/presentation/pages/post_session_page.dart';
 import '../../features/seances/presentation/pages/pre_session_page.dart';
 import '../../features/seances/presentation/pages/seances_page.dart';
@@ -66,15 +72,21 @@ class AppRouter {
   // Patients routes
   // ---------------------------------------------------------------------------
 
+  static const String patientNew = '/patients/new';
+
   /// /patients/<id>
-  static String patientDetailRoute(int patientId) {
-    return '$patients/$patientId';
+  static String patientDetailRoute(String patientId) {
+    return '$patients/${Uri.encodeComponent(patientId)}';
   }
 
   /// /patients/<id>/edit
-  static String patientEditRoute(int patientId) {
-    return '$patients/$patientId/edit';
+  static String patientEditRoute(String patientId) {
+    return '$patients/${Uri.encodeComponent(patientId)}/edit';
   }
+
+  static String doctorDetailRoute(int doctorId) => '$doctors/$doctorId';
+
+  static String nurseDetailRoute(int nurseId) => '$nurses/$nurseId';
 
   // ---------------------------------------------------------------------------
   // Machines routes
@@ -83,6 +95,11 @@ class AppRouter {
   /// /machines/<id>
   static String machineDetailRoute(int machineId) {
     return '$machines/$machineId';
+  }
+
+  /// /machines/<id>/config — mirrors Django machines:configurer_machine.
+  static String machineConfigRoute(int machineId) {
+    return '$machines/$machineId/config';
   }
 
   // ---------------------------------------------------------------------------
@@ -230,35 +247,26 @@ class AppRouter {
         },
       ),
 
-      // Patient detail:
-      // /patients/:id
       GoRoute(
-        path: '$patients/:id',
+        path: patientNew,
         builder: (context, state) {
-          final patientId = int.tryParse(
-                state.pathParameters['id'] ?? '',
-              ) ??
-              -1;
-
-          return PatientDetailPage(
-            patientId: patientId,
-          );
+          return const PatientAddPage();
         },
       ),
 
-      // Patient edit:
-      // /patients/:id/edit
       GoRoute(
         path: '$patients/:id/edit',
         builder: (context, state) {
-          final patientId = int.tryParse(
-                state.pathParameters['id'] ?? '',
-              ) ??
-              -1;
+          final patientId = state.pathParameters['id'] ?? '';
+          return PatientEditPage(patientId: patientId);
+        },
+      ),
 
-          return PatientEditPage(
-            patientId: patientId,
-          );
+      GoRoute(
+        path: '$patients/:id',
+        builder: (context, state) {
+          final patientId = state.pathParameters['id'] ?? '';
+          return PatientDetailPage(patientId: patientId);
         },
       ),
 
@@ -282,6 +290,20 @@ class AppRouter {
               -1;
 
           return MachineDetailPage(
+            machineId: machineId,
+          );
+        },
+      ),
+
+      GoRoute(
+        path: '$machines/:id/config',
+        builder: (context, state) {
+          final machineId = int.tryParse(
+                state.pathParameters['id'] ?? '',
+              ) ??
+              -1;
+
+          return MachineConfigPage(
             machineId: machineId,
           );
         },
@@ -378,6 +400,43 @@ class AppRouter {
         path: seancesHistory,
         builder: (context, state) {
           return const SeancesHistoryPage();
+        },
+      ),
+
+      GoRoute(
+        path: doctors,
+        builder: (context, state) {
+          return const DoctorsPage();
+        },
+      ),
+
+      GoRoute(
+        path: '$doctors/:id',
+        builder: (context, state) {
+          final id = int.tryParse(state.pathParameters['id'] ?? '') ?? -1;
+          return StaffDetailPage(staffId: id, kind: StaffKind.doctor);
+        },
+      ),
+
+      GoRoute(
+        path: nurses,
+        builder: (context, state) {
+          return const NursesPage();
+        },
+      ),
+
+      GoRoute(
+        path: '$nurses/:id',
+        builder: (context, state) {
+          final id = int.tryParse(state.pathParameters['id'] ?? '') ?? -1;
+          return StaffDetailPage(staffId: id, kind: StaffKind.nurse);
+        },
+      ),
+
+      GoRoute(
+        path: devices,
+        builder: (context, state) {
+          return const DevicesPage();
         },
       ),
     ],

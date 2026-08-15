@@ -33,4 +33,17 @@ class UserEntity {
     final r = role.trim().toLowerCase();
     return r == 'admin';
   }
+
+  UserEntity copyWith({bool? firstLogin}) {
+    return UserEntity(
+      id: id,
+      username: username,
+      email: email,
+      role: role,
+      phone: phone,
+      address: address,
+      specialite: specialite,
+      firstLogin: firstLogin ?? this.firstLogin,
+    );
+  }
 }

@@ -1,10 +1,13 @@
 import json
+import base64
 from datetime import date
+from unittest import mock
 from django.test import TestCase, Client
-from accounts.models import User, Role
+from accounts.models import User, Role, PasswordResetRequest
 from patients.models import Patient
 from machines.models import Machine, RaspiDevice
 from seances.models import Seance, Alert as SeanceAlert
+from seances.models import PreSessionMeasurements, PostSessionMeasurements, RapportSeance
 from monitoring.models import LiveMeasurement, Alerte
 
 class Phase1ApiTests(TestCase):
@@ -109,6 +112,97 @@ class Phase1ApiTests(TestCase):
         self.assertTrue(res.json().get("success"))
         self.assertNotIn("app_user_id", self.client.session)
 
+    def test_password_reset_request_known_email(self):
+        """Same neutral message, token persisted, email sent once."""
+        with mock.patch("api.views.send_mail") as mock_mail:
+            res = self.client.post(
+                "/api/password-reset/request/",
+                data=json.dumps({"email": "doc@test.com"}),
+                content_type="application/json",
+            )
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertTrue(data.get("success"))
+        self.assertEqual(
+            data["message"],
+            "Si un compte existe avec cet email, un lien a été envoyé.",
+        )
+        self.assertEqual(mock_mail.call_count, 1)
+        request = PasswordResetRequest.objects.filter(user=self.doctor_user).first()
+        self.assertIsNotNone(request)
+        self.assertTrue(request.token)
+        self.assertFalse(request.is_used())
+
+    def test_password_reset_request_unknown_email(self):
+        """Neutral message, no token row created, no email sent."""
+        with mock.patch("api.views.send_mail") as mock_mail:
+            res = self.client.post(
+                "/api/password-reset/request/",
+                data=json.dumps({"email": "does-not-exist@test.com"}),
+                content_type="application/json",
+            )
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertTrue(data.get("success"))
+        self.assertEqual(
+            data["message"],
+            "Si un compte existe avec cet email, un lien a été envoyé.",
+        )
+        self.assertEqual(mock_mail.call_count, 0)
+        self.assertEqual(PasswordResetRequest.objects.count(), 0)
+
+    def test_password_reset_request_requires_json_email(self):
+        res = self.client.post(
+            "/api/password-reset/request/",
+            data=json.dumps({"email": ""}),
+            content_type="application/json",
+        )
+        self.assertEqual(res.status_code, 400)
+        self.assertFalse(res.json().get("success"))
+        res2 = self.client.get("/api/password-reset/request/")
+        self.assertEqual(res2.status_code, 405)
+
+    def test_profile_photo_upload_cropped_image(self):
+        """Same cropped_image base64 contract as accounts.views.profile."""
+        User.objects.filter(id=self.doctor_user.id).update(first_login=False)
+        self.doctor_user.refresh_from_db()
+        self._login(self.doctor_user)
+        from accounts.models import Profile
+        # 1x1 PNG as a data-URL, like the web CropperJS output.
+        png_b64 = (
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlE"
+            "QVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+        )
+        data_url = f"data:image/png;base64,{png_b64}"
+        res = self.client.put(
+            "/api/profile/",
+            data=json.dumps({"cropped_image": data_url}),
+            content_type="application/json",
+        )
+        self.assertEqual(res.status_code, 200)
+        self.assertTrue(res.json().get("success"))
+        profile = Profile.objects.get(user=self.doctor_user)
+        self.assertTrue(profile.image)
+        self.assertTrue(res.json()["data"]["photo_url"])
+
+    def test_profile_photo_upload_invalid_image(self):
+        User.objects.filter(id=self.doctor_user.id).update(first_login=False)
+        self.doctor_user.refresh_from_db()
+        self._login(self.doctor_user)
+        res = self.client.put(
+            "/api/profile/",
+            data=json.dumps({"cropped_image": "not-a-data-url"}),
+            content_type="application/json",
+        )
+        self.assertEqual(res.status_code, 400)
+        self.assertFalse(res.json().get("success"))
+
+    def test_profile_payload_has_photo_url(self):
+        self._login(self.doctor_user)
+        res = self.client.get("/api/profile/")
+        self.assertEqual(res.status_code, 200)
+        self.assertIn("photo_url", res.json()["data"])
+
     def test_patients_api_unauthorized(self):
         res = self.client.get("/api/patients/")
         self.assertEqual(res.status_code, 401)
@@ -132,7 +226,8 @@ class Phase1ApiTests(TestCase):
         self._login(self.doctor_user)
         res = self.client.get(f"/api/patients/{self.patient.id}/")
         self.assertEqual(res.status_code, 200)
-        self.assertEqual(res.json()["data"]["id"], self.patient.id)
+        # Patient ids are always strings on the API contract (see _patient_pk).
+        self.assertEqual(res.json()["data"]["id"], str(self.patient.id))
 
     def test_machines_api(self):
         self._login(self.doctor_user)
@@ -189,6 +284,50 @@ class Phase1ApiTests(TestCase):
         self.assertEqual(res_end.status_code, 200)
         self.seance.refresh_from_db()
         self.assertEqual(self.seance.status, "terminée")
+
+        # Ending a session must generate exactly one rapport (OneToOne).
+        rapport = RapportSeance.objects.filter(seance=self.seance).first()
+        self.assertIsNotNone(rapport)
+        self.assertIn(rapport.qualite_seance, ("normale", "difficile"))
+        self.assertTrue(rapport.contenu_html.strip())
+        self.assertTrue(rapport.nom_fichier.endswith(".html"))
+        self.assertEqual(RapportSeance.objects.filter(seance=self.seance).count(), 1)
+
+    def test_rapport_generation_content(self):
+        """The rapport must embed real session data (charts, alerts, pre/post)."""
+        self._login(self.doctor_user)
+        PreSessionMeasurements.objects.create(
+            seance=self.seance, weight=80.5, blood_pressure="120/80",
+            heart_rate=72, temperature=36.6, saturation=98.0,
+        )
+        PostSessionMeasurements.objects.create(
+            seance=self.seance, weight=78.9, blood_pressure="110/75",
+            heart_rate=70, temperature=36.4, saturation=99.0,
+        )
+        self.seance.status = "en cours"
+        self.seance.save()
+        LiveMeasurement.objects.create(
+            seance=self.seance, Debit_sang=200, PA=110,
+            PTM=60, PV=120, Taux_UF=500, Volume_UF=1000, Heparine=800,
+        )
+        SeanceAlert.objects.create(
+            seance=self.seance, alert_type="PA", message="PA élevée",
+            danger_level="HIGH", recommended_action="Vérifier",
+        )
+        from seances.rapport import generate_rapport
+        rapport = generate_rapport(self.seance)
+        self.assertIn(self.patient.first_name, rapport.contenu_html)
+        self.assertIn(self.patient.last_name, rapport.contenu_html)
+        self.assertIn("chartPression", rapport.contenu_html)
+        # The alert message is embedded inside the json_script block (JSON
+        # escaped), and the quality badge renders "difficile" when a HIGH alert
+        # or complication exists.
+        self.assertIn("PA ", rapport.contenu_html)
+        self.assertIn("1.60 kg", rapport.contenu_html)
+        self.assertEqual(rapport.qualite_seance, "difficile")
+        # Idempotency: calling again updates instead of duplicating.
+        generate_rapport(self.seance)
+        self.assertEqual(RapportSeance.objects.filter(seance=self.seance).count(), 1)
 
     def test_session_detail_api(self):
         self._login(self.doctor_user)

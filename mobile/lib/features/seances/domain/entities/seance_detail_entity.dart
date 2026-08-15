@@ -231,7 +231,7 @@ class SeanceLastReadingEntity {
 
 class SeanceDetailEntity {
   final String id;
-  final int? patientId;
+  final String? patientId;
   final String patientFirstName;
   final String patientLastName;
   final int? machineDbId;

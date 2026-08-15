@@ -30,8 +30,8 @@ MQTT_BROKER = "localhost"
 MQTT_PORT = 1883
 MQTT_TOPIC_PREFIX = "dialysis/machine"
 
-# HTTP fallback (Django)
-DJANGO_PUSH_URL = "http://127.0.0.1:8000/monitoring/push/"
+# HTTP fallback (Django) — même endpoint REST que /api/push/
+DJANGO_PUSH_URL = "http://127.0.0.1:8000/api/push/"
 HEARTBEAT_URL = "http://127.0.0.1:8000/machines/raspi/heartbeat/"
 DEBIT_API = "http://127.0.0.1:8000/api/seance/debit/"
 LOCAL_AI_API = "http://127.0.0.1:8001/analyze/"

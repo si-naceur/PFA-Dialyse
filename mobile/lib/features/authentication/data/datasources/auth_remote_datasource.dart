@@ -44,4 +44,14 @@ class AuthRemoteDatasource {
       // Best-effort logout trigger on backend
     }
   }
+
+  /// Neutral by design: Django answers the same whether or not the email
+  /// exists, so the caller must not try to infer account existence from the
+  /// response.
+  Future<void> requestPasswordReset(String email) async {
+    await _apiClient.post(
+      ApiEndpoints.passwordResetRequest,
+      data: {'email': email},
+    );
+  }
 }

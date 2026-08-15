@@ -23,25 +23,4 @@ class SeancesHistoryRepositoryImpl implements SeancesHistoryRepository {
       dateTo: dateTo,
     );
   }
-
-  @override
-  Future<String> createSession({
-    required int patientId,
-    required int machineId,
-    required String sessionDate,
-    required String startTime,
-    int duration = 4,
-    String notes = '',
-    int debit = 60,
-  }) {
-    return _datasource.createSession(
-      patientId: patientId,
-      machineId: machineId,
-      sessionDate: sessionDate,
-      startTime: startTime,
-      duration: duration,
-      notes: notes,
-      debit: debit,
-    );
-  }
 }

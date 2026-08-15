@@ -4,12 +4,14 @@ import '../entities/patient_list_result.dart';
 abstract class PatientRepository {
   Future<PatientListResult> getPatients({String search = ''});
 
-  Future<PatientDetailEntity> getPatient(int patientId);
+  Future<PatientDetailEntity> createPatient(Map<String, dynamic> data);
+
+  Future<PatientDetailEntity> getPatient(String patientId);
 
   Future<PatientDetailEntity> updatePatient(
-    int patientId,
+    String patientId,
     Map<String, dynamic> data,
   );
 
-  Future<void> deletePatient(int patientId);
+  Future<void> deletePatient(String patientId);
 }

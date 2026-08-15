@@ -8,14 +8,4 @@ abstract class SeancesHistoryRepository {
     String dateFrom = '',
     String dateTo = '',
   });
-
-  Future<String> createSession({
-    required int patientId,
-    required int machineId,
-    required String sessionDate,
-    required String startTime,
-    int duration = 4,
-    String notes = '',
-    int debit = 60,
-  });
 }

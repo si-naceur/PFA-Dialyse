@@ -65,6 +65,109 @@ class _MachinesPageState extends ConsumerState<MachinesPage> {
     _applyFilters();
   }
 
+  /// Mirrors the web "Ajouter Machine" modal (machine_id, model, location).
+  Future<void> _showAddMachine(BuildContext context) async {
+    final repository = ref.read(machineRepositoryProvider);
+    final formKey = GlobalKey<FormState>();
+    final machineIdCtrl = TextEditingController();
+    final modelCtrl = TextEditingController();
+    final locationCtrl = TextEditingController();
+    var submitting = false;
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) {
+          return AlertDialog(
+            title: const Text('Ajouter Machine'),
+            content: Form(
+              key: formKey,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextFormField(
+                      controller: machineIdCtrl,
+                      decoration: _inputDecoration('ID'),
+                      validator: (v) =>
+                          (v == null || v.trim().isEmpty) ? 'ID requis' : null,
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: modelCtrl,
+                      decoration: _inputDecoration('Modèle'),
+                      validator: (v) =>
+                          (v == null || v.trim().isEmpty)
+                              ? 'Modèle requis'
+                              : null,
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: locationCtrl,
+                      decoration: _inputDecoration('Salle'),
+                      validator: (v) =>
+                          (v == null || v.trim().isEmpty) ? 'Salle requise' : null,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: submitting
+                    ? null
+                    : () => Navigator.of(dialogContext).pop(),
+                child: const Text('Annuler'),
+              ),
+              FilledButton(
+                onPressed: submitting
+                    ? null
+                    : () async {
+                        if (!formKey.currentState!.validate()) return;
+                        setDialogState(() => submitting = true);
+                        try {
+                          await repository.createMachine(
+                            machineId: machineIdCtrl.text.trim(),
+                            model: modelCtrl.text.trim(),
+                            location: locationCtrl.text.trim(),
+                          );
+                          if (dialogContext.mounted) {
+                            Navigator.of(dialogContext).pop();
+                          }
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Machine ajoutée avec succès'),
+                              ),
+                            );
+                          }
+                          await ref.read(machinesProvider.notifier).refresh();
+                        } catch (e) {
+                          if (!dialogContext.mounted) return;
+                          setDialogState(() => submitting = false);
+                          final message = e is ApiException
+                              ? e.message
+                              : e.toString();
+                          ScaffoldMessenger.of(dialogContext).showSnackBar(
+                            SnackBar(content: Text(message)),
+                          );
+                        }
+                      },
+                child: submitting
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text('Enregistrer'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final machinesAsync = ref.watch(machinesProvider);
@@ -95,6 +198,11 @@ class _MachinesPageState extends ConsumerState<MachinesPage> {
 
     return AppShell(
       actions: [
+        IconButton(
+          tooltip: 'Ajouter une machine',
+          icon: const Icon(Icons.add_rounded),
+          onPressed: () => _showAddMachine(context),
+        ),
         if (_searchController.text.isNotEmpty ||
             _selectedStatus.isNotEmpty ||
             _selectedLocation.isNotEmpty)
@@ -150,7 +258,9 @@ class _MachinesPageState extends ConsumerState<MachinesPage> {
                                   onTap: () => context.push(
                                     AppRouter.machineDetailRoute(m.id),
                                   ),
-                                  onConfigTap: () {}, // TODO: config page
+                                  onConfigTap: () => context.push(
+                                    AppRouter.machineConfigRoute(m.id),
+                                  ),
                                 ),
                               ),
                             )
@@ -161,6 +271,15 @@ class _MachinesPageState extends ConsumerState<MachinesPage> {
           ),
         ],
       ),
+    );
+  }
+
+  InputDecoration _inputDecoration(String label) {
+    return InputDecoration(
+      labelText: label,
+      labelStyle: const TextStyle(fontSize: 14, color: Color(0xFF6B7280)),
+      isDense: true,
+      border: const OutlineInputBorder(),
     );
   }
 

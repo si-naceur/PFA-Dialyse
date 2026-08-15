@@ -7,7 +7,7 @@ import 'package:mobile/features/patients/presentation/widgets/status_badge.dart'
 
 void main() {
   const patient = PatientEntity(
-    id: 1,
+    id: '1',
     firstName: 'Ahmed',
     lastName: 'Ben Salah',
     dateOfBirth: '1980-05-20',
@@ -39,7 +39,7 @@ void main() {
 
   testWidgets('PatientCard renders em-dash for missing phone', (tester) async {
     const noPhone = PatientEntity(
-      id: 2,
+      id: '2',
       firstName: 'Sami',
       lastName: 'Ben Ali',
       dateOfBirth: null,

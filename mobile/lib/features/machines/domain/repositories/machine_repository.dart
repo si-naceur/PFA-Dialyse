@@ -9,4 +9,16 @@ abstract class MachineRepository {
   });
 
   Future<MachineDetailEntity> getMachine(int machineId);
+
+  Future<MachineDetailEntity> configureMachine(
+    int machineId, {
+    required String status,
+    String? raspiId,
+  });
+
+  Future<void> createMachine({
+    required String machineId,
+    required String model,
+    required String location,
+  });
 }

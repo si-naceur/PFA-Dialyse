@@ -4,4 +4,6 @@ abstract class AuthRepository {
   Future<UserEntity> login(String username, String password);
   Future<void> logout();
   Future<UserEntity?> checkAutoLogin();
+  Future<void> markFirstLoginDone();
+  Future<void> requestPasswordReset(String email);
 }

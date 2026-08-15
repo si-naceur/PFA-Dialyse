@@ -7,6 +7,7 @@ from django.views.decorators.http import require_http_methods
 from django.shortcuts import get_object_or_404
 from django.db.models import Q
 from .models import Seance, PostSessionMeasurements,PreSessionMeasurements
+from .rapport import generate_rapport
 from machines.models import Machine
 from patients.models import Patient
 from accounts.decorator import app_login_required, role_required
@@ -371,6 +372,7 @@ def post_session_page(request, session_id):
             machine=seance.machine
             machine.status = "Prete"
             machine.save(update_fields=["status"])
+            generate_rapport(seance)
             return redirect("seances:planning")
     else:
         form = PostSessionForm(instance=obj)

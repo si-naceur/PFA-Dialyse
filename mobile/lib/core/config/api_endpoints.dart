@@ -21,6 +21,8 @@ class ApiEndpoints {
   // Auth
   static const String login = '/api/login/';
   static const String logout = '/api/logout/';
+  static const String profile = '/api/profile/';
+  static const String passwordResetRequest = '/api/password-reset/request/';
 
   // Dashboard
   static const String dashboard = '/api/dashboard/';
@@ -54,4 +56,11 @@ class ApiEndpoints {
   // Raspberry Pi / Edge pipeline
   static const String pushMeasurement = '/api/push/';
   static const String seanceDebit = '/api/seance/debit/';
+
+  // Staff
+  static const String doctors = '/api/doctors/';
+  static const String nurses = '/api/nurses/';
+
+  // Devices (Raspberry Pi)
+  static const String devices = '/api/devices/';
 }

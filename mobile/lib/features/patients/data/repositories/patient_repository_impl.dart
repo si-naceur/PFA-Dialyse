@@ -19,14 +19,20 @@ class PatientRepositoryImpl implements PatientRepository {
   }
 
   @override
-  Future<PatientDetailEntity> getPatient(int patientId) async {
+  Future<PatientDetailEntity> createPatient(Map<String, dynamic> data) async {
+    final model = await _remoteDatasource.createPatient(data);
+    return model.toEntity();
+  }
+
+  @override
+  Future<PatientDetailEntity> getPatient(String patientId) async {
     final model = await _remoteDatasource.getPatient(patientId);
     return model.toEntity();
   }
 
   @override
   Future<PatientDetailEntity> updatePatient(
-    int patientId,
+    String patientId,
     Map<String, dynamic> data,
   ) async {
     final model = await _remoteDatasource.updatePatient(
@@ -38,7 +44,7 @@ class PatientRepositoryImpl implements PatientRepository {
   }
 
   @override
-  Future<void> deletePatient(int patientId) async {
+  Future<void> deletePatient(String patientId) async {
     await _remoteDatasource.deletePatient(patientId);
   }
 }

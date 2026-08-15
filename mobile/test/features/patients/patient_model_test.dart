@@ -25,7 +25,7 @@ void main() {
       final model = PatientModel.fromJson(json);
       final entity = model.toEntity();
 
-      expect(model.id, 7);
+      expect(model.id, '7');
       expect(entity.fullName, 'Ahmed Ben Salah');
       expect(model.dateOfBirth, '1980-05-20');
       expect(model.age, 45);
@@ -48,7 +48,7 @@ void main() {
         'date_of_birth': null,
       });
 
-      expect(model.id, 1);
+      expect(model.id, '1');
       expect(model.age, 0);
       expect(model.dateOfBirth, isNull);
       expect(model.telephone, '');
@@ -106,7 +106,7 @@ void main() {
       final model = PatientDetailModel.fromJson(json);
       final entity = model.toEntity();
 
-      expect(entity.patient.id, 7);
+      expect(entity.patient.id, '7');
       expect(entity.recentSessions, hasLength(2));
       expect(entity.recentSessions.first.status, 'en cours');
       expect(entity.recentSessions.last.machineId, 'M101');

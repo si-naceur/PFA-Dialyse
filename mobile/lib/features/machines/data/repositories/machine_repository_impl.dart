@@ -27,4 +27,31 @@ class MachineRepositoryImpl implements MachineRepository {
     final model = await _remoteDatasource.getMachine(machineId);
     return model.toEntity();
   }
+
+  @override
+  Future<MachineDetailEntity> configureMachine(
+    int machineId, {
+    required String status,
+    String? raspiId,
+  }) async {
+    final model = await _remoteDatasource.configureMachine(
+      machineId,
+      status: status,
+      raspiId: raspiId,
+    );
+    return model.toEntity();
+  }
+
+  @override
+  Future<void> createMachine({
+    required String machineId,
+    required String model,
+    required String location,
+  }) {
+    return _remoteDatasource.createMachine(
+      machineId: machineId,
+      model: model,
+      location: location,
+    );
+  }
 }

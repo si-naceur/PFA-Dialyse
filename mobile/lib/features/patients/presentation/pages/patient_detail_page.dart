@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/network/api_exception.dart';
+import '../../../../core/routes/app_router.dart';
 import '../../../../core/widgets/custom_button.dart';
 import '../../domain/entities/patient_session_entity.dart';
 import '../providers/patients_provider.dart';
@@ -11,7 +12,7 @@ import '../widgets/status_badge.dart';
 
 /// Patient dossier screen.
 class PatientDetailPage extends ConsumerWidget {
-  final int patientId;
+  final String patientId;
 
   const PatientDetailPage({
     super.key,
@@ -91,7 +92,7 @@ class PatientDetailPage extends ConsumerWidget {
             icon: const Icon(Icons.edit_outlined),
             tooltip: 'Modifier',
             onPressed: () {
-              context.push('/patients/$patientId/edit');
+              context.push(AppRouter.patientEditRoute(patientId));
             },
           ),
 

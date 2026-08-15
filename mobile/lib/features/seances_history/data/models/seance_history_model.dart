@@ -13,7 +13,7 @@ class SeanceHistoryModel {
                 .trim()
           : '',
       patientId: patient is Map<String, dynamic>
-          ? (patient['id'] as num?)?.toInt()
+          ? patient['id']?.toString()
           : null,
       machineId: machine is Map<String, dynamic>
           ? (machine['machine_id']?.toString() ?? '')

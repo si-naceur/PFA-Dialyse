@@ -88,6 +88,21 @@ class AuthNotifier extends StateNotifier<AuthState> {
     await _repository.logout();
     state = AuthUnauthenticated();
   }
+
+  /// Password reset request. Never throws for unknown emails (the backend
+  /// answers neutrally); a transport error surfaces as an ApiException.
+  Future<void> requestPasswordReset(String email) async {
+    await _repository.requestPasswordReset(email);
+  }
+
+  Future<void> completeFirstLogin() async {
+    final user = state is AuthAuthenticated
+        ? (state as AuthAuthenticated).user
+        : await _repository.checkAutoLogin();
+    if (user == null) return;
+    await _repository.markFirstLoginDone();
+    state = AuthAuthenticated(user.copyWith(firstLogin: false));
+  }
 }
 
 final authStateProvider = StateNotifierProvider<AuthNotifier, AuthState>((ref) {

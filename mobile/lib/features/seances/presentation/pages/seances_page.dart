@@ -935,7 +935,7 @@ class _NewSessionSheet extends ConsumerStatefulWidget {
 }
 
 class _NewSessionSheetState extends ConsumerState<_NewSessionSheet> {
-  int? _patientId;
+  String? _patientId;
   int? _machineId;
   DateTime _date = DateTime.now();
   TimeOfDay _startTime = const TimeOfDay(hour: 8, minute: 0);
@@ -996,7 +996,7 @@ class _NewSessionSheetState extends ConsumerState<_NewSessionSheet> {
                 style: TextStyle(fontSize: 13, color: Color(0xFF6B7280)),
               ),
               const SizedBox(height: 16),
-              DropdownButtonFormField<int>(
+              DropdownButtonFormField<String>(
                 initialValue: _patientId,
                 isExpanded: true,
                 decoration: _dec('Patient *'),

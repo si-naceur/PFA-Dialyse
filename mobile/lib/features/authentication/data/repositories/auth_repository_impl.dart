@@ -40,6 +40,26 @@ class AuthRepositoryImpl implements AuthRepository {
   }
 
   @override
+  Future<void> requestPasswordReset(String email) async {
+    await _remoteDatasource.requestPasswordReset(email);
+  }
+
+  @override
+  Future<void> markFirstLoginDone() async {
+    await _storageService.saveUserSession(
+      userId: await _storageService.getUserId() ?? 0,
+      username: await _storageService.getUsername() ?? '',
+      email: await _storageService.getUserEmail(),
+      role: await _storageService.getUserRole() ?? '',
+      phone: await _storageService.getUserPhone(),
+      address: await _storageService.getUserAddress(),
+      specialite: await _storageService.getUserSpecialite(),
+      firstLogin: false,
+      cookie: await _storageService.getSessionCookie(),
+    );
+  }
+
+  @override
   Future<UserEntity?> checkAutoLogin() async {
     final userId = await _storageService.getUserId();
     final username = await _storageService.getUsername();

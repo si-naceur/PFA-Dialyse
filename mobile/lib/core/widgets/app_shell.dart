@@ -281,18 +281,7 @@ class _DrawerTile extends StatelessWidget {
     return InkWell(
       onTap: () {
         Navigator.of(context).pop();
-        if (item.implemented) {
-          context.go(item.route);
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                '${item.label} — migration en cours (parité Django).',
-              ),
-              duration: const Duration(seconds: 2),
-            ),
-          );
-        }
+        context.go(item.route);
       },
       borderRadius: BorderRadius.circular(8),
       child: Container(
@@ -316,22 +305,6 @@ class _DrawerTile extends StatelessWidget {
                 ),
               ),
             ),
-            if (!item.implemented)
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF3F4F6),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: const Text(
-                  'bientôt',
-                  style: TextStyle(
-                    fontSize: 10,
-                    color: Color(0xFF6B7280),
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ),
           ],
         ),
       ),
@@ -379,7 +352,6 @@ class _NavItem {
   final IconData icon;
   final Color color;
   final bool Function(UserEntity? user) visible;
-  final bool implemented;
 
   const _NavItem({
     required this.label,
@@ -387,7 +359,6 @@ class _NavItem {
     required this.icon,
     required this.color,
     required this.visible,
-    this.implemented = true,
   });
 
   /// Exact order and visibility from `templates/partials/sidebar.html`.
@@ -406,7 +377,6 @@ class _NavItem {
         icon: Icons.videocam_outlined,
         color: Color(0xFF15803D),
         visible: _isAdmin,
-        implemented: false,
       ),
       const _NavItem(
         label: 'Surveillance',
@@ -456,7 +426,6 @@ class _NavItem {
         icon: Icons.medical_services_outlined,
         color: Color(0xFF6B7280),
         visible: _isAdmin,
-        implemented: false,
       ),
       const _NavItem(
         label: 'Infirmiers',
@@ -464,7 +433,6 @@ class _NavItem {
         icon: Icons.person_outline,
         color: Color(0xFF6B7280),
         visible: _isNotNurse,
-        implemented: false,
       ),
     ].where((item) => item.visible(user)).toList();
   }

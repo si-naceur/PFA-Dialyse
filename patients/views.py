@@ -242,3 +242,19 @@ def session_detail(request, seance_id):
         "current_user": request.current_user,
     })
 
+@app_login_required
+@role_required("Admin", "Docteur", "Infirmier", redirect_to="accounts:error")
+def delete_patient(request, id):
+    if request.method != "POST":
+        return redirect("patients:patient")
+
+    try:
+        patient = Patient.objects.get(id=id)
+    except Patient.DoesNotExist:
+        messages.error(request, "Patient non trouvé.")
+        return redirect("patients:patient")
+
+    patient.delete()
+
+    messages.success(request, "Patient supprimé avec succès !")
+    return redirect("patients:patient")

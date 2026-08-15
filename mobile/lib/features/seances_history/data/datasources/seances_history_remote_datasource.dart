@@ -47,34 +47,4 @@ class SeancesHistoryRemoteDatasource {
     }
     throw ApiException('Format de réponse invalide pour les séances');
   }
-
-  /// POST /api/sessions/ — creates a "planifiée" séance (Admin/Docteur only).
-  /// Returns the new session id.
-  Future<String> createSession({
-    required int patientId,
-    required int machineId,
-    required String sessionDate,
-    required String startTime,
-    int duration = 4,
-    String notes = '',
-    int debit = 60,
-  }) async {
-    final response = await _apiClient.post(
-      ApiEndpoints.sessions,
-      data: {
-        'patient_id': patientId,
-        'machine_id': machineId,
-        'session_date': sessionDate,
-        'start_time': startTime,
-        'duration': duration,
-        'notes': notes,
-        'debit': debit,
-      },
-    );
-    final data = response.data;
-    if (data is Map<String, dynamic> && data['success'] == true) {
-      return data['id']?.toString() ?? '';
-    }
-    throw ApiException('Impossible de créer la séance');
-  }
 }

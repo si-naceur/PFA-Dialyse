@@ -132,7 +132,7 @@ class SeanceDetailModel {
     return SeanceDetailEntity(
       id: json['id']?.toString() ?? '',
       patientId: patient is Map<String, dynamic>
-          ? (patient['id'] as num?)?.toInt()
+          ? patient['id']?.toString()
           : null,
       patientFirstName: patient is Map<String, dynamic>
           ? (patient['first_name']?.toString() ?? '')

@@ -45,7 +45,23 @@ class PatientRemoteDatasource {
     );
   }
 
-  Future<PatientDetailModel> getPatient(int patientId) async {
+  Future<PatientDetailModel> createPatient(Map<String, dynamic> data) async {
+    final response = await _apiClient.post(
+      ApiEndpoints.patients,
+      data: data,
+    );
+    final body = response.data;
+    if (body is Map<String, dynamic> &&
+        body['success'] == true &&
+        body['data'] is Map<String, dynamic>) {
+      return PatientDetailModel.fromJson(
+        body['data'] as Map<String, dynamic>,
+      );
+    }
+    throw ApiException('Format de réponse invalide pour la création');
+  }
+
+  Future<PatientDetailModel> getPatient(String patientId) async {
     final response = await _apiClient.get(
       '${ApiEndpoints.patientDetail}$patientId/',
     );
@@ -66,7 +82,7 @@ class PatientRemoteDatasource {
   }
 
   Future<PatientDetailModel> updatePatient(
-    int patientId,
+    String patientId,
     Map<String, dynamic> data,
   ) async {
     final response = await _apiClient.put(
@@ -89,7 +105,7 @@ class PatientRemoteDatasource {
     );
   }
 
-  Future<void> deletePatient(int patientId) async {
+  Future<void> deletePatient(String patientId) async {
     await _apiClient.delete(
       '${ApiEndpoints.patientDetail}$patientId/',
     );

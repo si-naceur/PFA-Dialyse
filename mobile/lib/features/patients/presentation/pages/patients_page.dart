@@ -59,6 +59,13 @@ class _PatientsPageState extends ConsumerState<PatientsPage> {
     final notifier = ref.read(patientsProvider.notifier);
 
     return AppShell(
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => context.push(AppRouter.patientNew),
+        backgroundColor: const Color(0xFF2563EB),
+        foregroundColor: Colors.white,
+        icon: const Icon(Icons.person_add_alt_1_rounded),
+        label: const Text('Ajouter'),
+      ),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [

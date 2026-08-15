@@ -2,14 +2,18 @@
 api/views.py — PFA-Dialyse Mobile REST API (Phase 1)
 """
 import json
+import random
+import string
 from datetime import date, datetime, timedelta
 from django.http import JsonResponse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
-from django.contrib.auth.hashers import check_password
+from django.contrib.auth.hashers import check_password, make_password
+from django.core.exceptions import ValidationError
 from django.db.models import Avg, Q
 
-from accounts.models import User, UserActivity
+from accounts.models import User, UserActivity, Role, Profile, PasswordResetRequest
+from accounts.reset_utils import make_reset_token
 from machines.models import Machine, RaspiDevice
 from monitoring.models import LiveMeasurement, Alerte
 from monitoring.services import check_thresholds
@@ -20,6 +24,13 @@ from seances.models import (
     PostSessionMeasurements,
     Alert as SeanceAlert,
 )
+from django.core.mail import send_mail
+from django.urls import reverse
+from django.conf import settings
+from django.core.files.base import ContentFile
+import base64
+import binascii
+import uuid
 
 def _json_ok(data=None, **kwargs):
     body = {"success": True}
@@ -74,41 +85,82 @@ def _has_role(user, *roles):
     role_name = (user.role.name or "").lower()
     return role_name in {r.lower() for r in roles}
 
+def _patient_pk(patient_or_id):
+    """Patient primary keys are persisted as Mongo ObjectId strings (or
+    integer AutoField values on SQLite). Mobile clients always receive a
+    string and must never int-parse the identifier."""
+    if patient_or_id is None:
+        return None
+    pk = getattr(patient_or_id, "id", patient_or_id)
+    return str(pk)
+
+def _patient_dict(p, extra=None):
+    data = {
+        "id": _patient_pk(p),
+        "first_name": p.first_name,
+        "last_name": p.last_name,
+        "date_of_birth": str(p.date_of_birth) if p.date_of_birth else None,
+        "age": p.age,
+        "groupe_sanguin": p.groupe_sanguin,
+        "type_de_dialyse": p.type_de_dialyse,
+        "adresse": p.adresse,
+        "telephone": p.telephone,
+        "contact_urgence": p.contact_urgence,
+        "antecedents_medicaux": p.antecedents_medicaux,
+        "created_at": p.created_at.isoformat() if p.created_at else None,
+    }
+    if extra:
+        data.update(extra)
+    return data
+
+def _seniority_label(join_date):
+    if not join_date:
+        return ""
+    now = timezone.now().date()
+    years = now.year - join_date.year
+    months = now.month - join_date.month
+    if months < 0:
+        years -= 1
+        months += 12
+    if years <= 0:
+        return f"{months} mois"
+    return f"{years} an" + ("s" if years > 1 else "")
+
 @csrf_exempt
 def mobile_login(request):
     if request.method != "POST":
         return _json_err("POST required", status=405)
     try:
-        body = json.loads(request.body)
-        username = body.get("username", "").strip()
-        password = body.get("password", "")
-        user = User.objects.select_related("role").filter(username=username).first()
-        if user is None or not check_password(password, user.password):
-            return JsonResponse({"success": False, "message": "Invalid username or password"}, status=401)
-        if hasattr(user, "is_active") and not user.is_active:
-            return JsonResponse({"success": False, "message": "Account disabled"}, status=403)
-        user.etat = True
-        user.save(update_fields=["etat"])
-        request.session["app_user_id"] = user.id
-        request.session.save()
-        return JsonResponse({
-            "success": True,
-            # Same Django session key as Set-Cookie sessionid — Flutter Web
-            # stores it and sends X-Session-Id when Cookie cannot be set.
-            "sessionid": request.session.session_key,
-            "user": {
-                "id": user.id,
-                "username": user.username,
-                "email": user.email,
-                "role": user.role.name if user.role else "",
-                "specialite": user.specialite,
-                "first_login": user.first_login,
-                "phone": user.phone_number,
-                "address": user.adress,
-            },
-        })
-    except Exception as e:
-        return JsonResponse({"success": False, "message": str(e)}, status=500)
+        body = json.loads(request.body or "{}")
+    except json.JSONDecodeError:
+        return _json_err("Invalid JSON body")
+    username = body.get("username", "").strip()
+    password = body.get("password", "")
+    user = User.objects.select_related("role").filter(username=username).first()
+    if user is None or not check_password(password, user.password):
+        return JsonResponse({"success": False, "message": "Invalid username or password"}, status=401)
+    if hasattr(user, "is_active") and not user.is_active:
+        return JsonResponse({"success": False, "message": "Account disabled"}, status=403)
+    user.etat = True
+    user.save(update_fields=["etat"])
+    request.session["app_user_id"] = user.id
+    request.session.save()
+    return JsonResponse({
+        "success": True,
+        # Same Django session key as Set-Cookie sessionid — Flutter Web
+        # stores it and sends X-Session-Id when Cookie cannot be set.
+        "sessionid": request.session.session_key,
+        "user": {
+            "id": user.id,
+            "username": user.username,
+            "email": user.email,
+            "role": user.role.name if user.role else "",
+            "specialite": user.specialite,
+            "first_login": user.first_login,
+            "phone": user.phone_number,
+            "address": user.adress,
+        },
+    })
 
 @csrf_exempt
 @api_login_required
@@ -124,71 +176,246 @@ def mobile_logout(request):
     request.session.flush()
     return JsonResponse({"success": True, "message": "Logged out successfully"})
 
+
+API_RESET_TOKEN_MAX_AGE = 60 * 30  # 30 min, same as accounts.views
+
+@csrf_exempt
+def api_password_reset_request(request):
+    """Mobile counterpart of accounts.views.password_reset_request.
+
+    Neutral response (security): identical message whether or not the email
+    exists, exactly like the web flow."""
+    if request.method != "POST":
+        return _json_err("POST required", status=405)
+    try:
+        body = json.loads(request.body or "{}")
+    except json.JSONDecodeError:
+        return _json_err("Invalid JSON body")
+    email = body.get("email", "").strip().lower()
+    if not email:
+        return _json_err("Email requis")
+
+    success_msg = "Si un compte existe avec cet email, un lien a été envoyé."
+
+    user = User.objects.filter(email__iexact=email).first()
+    if not user:
+        return _json_ok(message=success_msg)
+
+    token = make_reset_token(user.id)
+    PasswordResetRequest.objects.create(user=user, token=token)
+
+    reset_link = request.build_absolute_uri(
+        reverse("accounts:password_reset_confirm", args=[token])
+    )
+    try:
+        send_mail(
+            subject="Réinitialisation de mot de passe",
+            message=(
+                f"Cliquez sur ce lien pour réinitialiser votre mot de passe: "
+                f"{reset_link}"
+            ),
+            from_email=getattr(settings, "DEFAULT_FROM_EMAIL", None),
+            recipient_list=[user.email],
+            fail_silently=False,
+        )
+    except Exception:
+        # Matching web behavior is not possible here (web lets the exception
+        # propagate); keep the neutral answer so enumeration stays impossible.
+        pass
+
+    return _json_ok(message=success_msg)
+
+@csrf_exempt
 @api_login_required
 def api_patients(request):
-    if request.method != "GET":
-        return _json_err("GET required", status=405)
-    qs = Patient.objects.all().order_by("last_name", "first_name")
-    search = request.GET.get("search", "").strip()
-    if search:
-        qs = qs.filter(
-            Q(first_name__icontains=search) |
-            Q(last_name__icontains=search) |
-            Q(telephone__icontains=search) |
-            Q(antecedents_medicaux__icontains=search)
-        )
-    data = [
-        {
-            "id": p.id,
-            "first_name": p.first_name,
-            "last_name": p.last_name,
-            "date_of_birth": str(p.date_of_birth) if p.date_of_birth else None,
-            "age": p.age,
-            "groupe_sanguin": p.groupe_sanguin,
-            "type_de_dialyse": p.type_de_dialyse,
-            "adresse": p.adresse,
-            "telephone": p.telephone,
-            "contact_urgence": p.contact_urgence,
-            "antecedents_medicaux": p.antecedents_medicaux,
-            "created_at": p.created_at.isoformat() if p.created_at else None,
-        }
-        for p in qs
-    ]
-    return _json_ok(data, count=len(data))
+    if request.method == "GET":
+        qs = Patient.objects.all().order_by("last_name", "first_name")
 
+        search = request.GET.get("search", "").strip()
+
+        if search:
+            qs = qs.filter(
+                Q(first_name__icontains=search)
+                | Q(last_name__icontains=search)
+                | Q(telephone__icontains=search)
+                | Q(antecedents_medicaux__icontains=search)
+            )
+
+        data = [_patient_dict(p) for p in qs]
+
+        return _json_ok(data, count=len(data))
+
+    if request.method == "POST":
+        try:
+            body = json.loads(request.body or "{}")
+        except json.JSONDecodeError:
+            return _json_err("Invalid JSON")
+
+        first_name = str(body.get("first_name", "")).strip()
+        last_name = str(body.get("last_name", "")).strip()
+        date_of_birth = body.get("date_of_birth")
+
+        if not first_name:
+            return _json_err("Le prénom est obligatoire")
+
+        if not last_name:
+            return _json_err("Le nom est obligatoire")
+
+        if not date_of_birth:
+            return _json_err("La date de naissance est obligatoire")
+
+        try:
+            dob = date.fromisoformat(str(date_of_birth))
+        except (TypeError, ValueError):
+            return _json_err("Date de naissance invalide")
+
+        today = date.today()
+        age = today.year - dob.year - (
+            (today.month, today.day) < (dob.month, dob.day)
+        )
+
+        patient = Patient.objects.create(
+            first_name=first_name,
+            last_name=last_name,
+            date_of_birth=dob,
+            age=age,
+            groupe_sanguin=str(body.get("groupe_sanguin", "A+")).strip(),
+            type_de_dialyse=str(
+                body.get("type_de_dialyse", "Hémodialyse")
+            ).strip(),
+            adresse=str(body.get("adresse", "")).strip(),
+            telephone=str(body.get("telephone", "")).strip(),
+            contact_urgence=str(
+                body.get("contact_urgence", "")
+            ).strip(),
+            antecedents_medicaux=str(
+                body.get("antecedents_medicaux", "")
+            ).strip(),
+        )
+
+        return _json_ok(
+            _patient_dict(patient),
+            message="Patient ajouté avec succès",
+        )
+
+    return _json_err("GET or POST required", status=405)
+
+
+@csrf_exempt
 @api_login_required
 def api_patient_detail(request, patient_id):
-    if request.method != "GET":
-        return _json_err("GET required", status=405)
     try:
-        p = Patient.objects.get(id=patient_id)
-    except Patient.DoesNotExist:
+        patient = Patient.objects.get(id=patient_id)
+    except (Patient.DoesNotExist, ValueError, TypeError):
         return _json_err("Patient not found", status=404)
-    sessions = list(
-        Seance.objects.filter(patient=p)
-        .select_related("machine")
-        .order_by("-session_date")[:10]
-        .values("id", "session_date", "status", "duration", "machine__machine_id")
-    )
-    for s in sessions:
-        s["id"] = str(s["id"])
-        s["session_date"] = str(s["session_date"]) if s["session_date"] else None
-    data = {
-        "id": p.id,
-        "first_name": p.first_name,
-        "last_name": p.last_name,
-        "date_of_birth": str(p.date_of_birth) if p.date_of_birth else None,
-        "age": p.age,
-        "groupe_sanguin": p.groupe_sanguin,
-        "type_de_dialyse": p.type_de_dialyse,
-        "adresse": p.adresse,
-        "telephone": p.telephone,
-        "contact_urgence": p.contact_urgence,
-        "antecedents_medicaux": p.antecedents_medicaux,
-        "created_at": p.created_at.isoformat() if p.created_at else None,
-        "recent_sessions": sessions,
-    }
-    return _json_ok(data)
+
+    if request.method == "GET":
+        sessions = list(
+            Seance.objects.filter(patient=patient)
+            .select_related("machine")
+            .order_by("-session_date")[:10]
+            .values(
+                "id",
+                "session_date",
+                "status",
+                "duration",
+                "machine__machine_id",
+            )
+        )
+
+        for s in sessions:
+            s["id"] = str(s["id"])
+            s["session_date"] = (
+                str(s["session_date"]) if s["session_date"] else None
+            )
+
+        data = _patient_dict(patient, extra={"recent_sessions": sessions})
+
+        return _json_ok(data)
+
+    if request.method == "PUT":
+        try:
+            body = json.loads(request.body or "{}")
+        except json.JSONDecodeError:
+            return _json_err("Invalid JSON")
+
+        first_name = str(
+            body.get("first_name", patient.first_name)
+        ).strip()
+
+        last_name = str(
+            body.get("last_name", patient.last_name)
+        ).strip()
+
+        date_of_birth = body.get(
+            "date_of_birth",
+            str(patient.date_of_birth) if patient.date_of_birth else None,
+        )
+
+        if not first_name:
+            return _json_err("Le prénom est obligatoire")
+
+        if not last_name:
+            return _json_err("Le nom est obligatoire")
+
+        try:
+            dob = date.fromisoformat(str(date_of_birth))
+        except (TypeError, ValueError):
+            return _json_err("Date de naissance invalide")
+
+        today = date.today()
+        age = today.year - dob.year - (
+            (today.month, today.day) < (dob.month, dob.day)
+        )
+
+        patient.first_name = first_name
+        patient.last_name = last_name
+        patient.date_of_birth = dob
+        patient.age = age
+        patient.groupe_sanguin = str(
+            body.get("groupe_sanguin", patient.groupe_sanguin)
+        ).strip()
+
+        patient.type_de_dialyse = str(
+            body.get("type_de_dialyse", patient.type_de_dialyse)
+        ).strip()
+
+        patient.adresse = str(
+            body.get("adresse", patient.adresse)
+        ).strip()
+
+        patient.telephone = str(
+            body.get("telephone", patient.telephone)
+        ).strip()
+
+        patient.contact_urgence = str(
+            body.get("contact_urgence", patient.contact_urgence)
+        ).strip()
+
+        patient.antecedents_medicaux = str(
+            body.get(
+                "antecedents_medicaux",
+                patient.antecedents_medicaux,
+            )
+        ).strip()
+
+        patient.save()
+
+        return _json_ok(
+            _patient_dict(patient),
+            message="Patient modifié avec succès",
+        )
+    if request.method == "DELETE":
+        patient.delete()
+        return _json_ok(
+            {"id": _patient_pk(patient_id)},
+            message="Patient supprimé avec succès",
+        )
+
+    return _json_err("GET, PUT or DELETE required", status=405)
+
+
+
 
 def _raspi_info(machine):
     try:
@@ -204,36 +431,95 @@ def _raspi_info(machine):
     except Exception:
         return None
 
+def _machine_dict(m):
+    return {
+        "id": m.id,
+        "machine_id": m.machine_id,
+        "model": m.model,
+        "manufacturer": m.manufacturer,
+        "installation_date": str(m.installation_date) if m.installation_date else None,
+        "status": m.status,
+        "location": m.location,
+        "sessions": m.sessions,
+        "hours": m.hours,
+        "raspi": _raspi_info(m),
+    }
+
+@csrf_exempt
 @api_login_required
 def api_machines(request):
+    if request.method == "POST":
+        current_user = request.current_user
+        if not _has_role(current_user, "Admin"):
+            return _json_err("Insufficient permissions — Admin only", status=403)
+        try:
+            body = json.loads(request.body or "{}")
+        except json.JSONDecodeError:
+            return _json_err("Invalid JSON")
+        machine_id = str(body.get("machine_id", "")).strip()
+        model = str(body.get("model", "")).strip()
+        location = str(body.get("location", "")).strip()
+        if not machine_id:
+            return _json_err("machine_id is required")
+        if Machine.objects.filter(machine_id=machine_id).exists():
+            return _json_err("Cette machine existe déjà", status=409)
+        m = Machine.objects.create(
+            machine_id=machine_id,
+            model=model,
+            location=location,
+        )
+        return _json_ok(_machine_dict(m), message="Machine ajoutée avec succès")
+
     if request.method != "GET":
-        return _json_err("GET required", status=405)
+        return _json_err("GET or POST required", status=405)
     machines = Machine.objects.all().order_by("machine_id")
-    data = [
-        {
-            "id": m.id,
-            "machine_id": m.machine_id,
-            "model": m.model,
-            "manufacturer": m.manufacturer,
-            "installation_date": str(m.installation_date) if m.installation_date else None,
-            "status": m.status,
-            "location": m.location,
-            "sessions": m.sessions,
-            "hours": m.hours,
-            "raspi": _raspi_info(m),
-        }
-        for m in machines
-    ]
+    search = request.GET.get("search", "").strip()
+    status_filter = request.GET.get("status", "").strip()
+    salle_filter = request.GET.get("location", "").strip() or request.GET.get("salle", "").strip()
+    if search:
+        machines = machines.filter(machine_id__icontains=search)
+    if status_filter:
+        machines = machines.filter(status=status_filter)
+    if salle_filter:
+        machines = machines.filter(location=salle_filter)
+    data = [_machine_dict(m) for m in machines]
     return _json_ok(data, count=len(data))
 
+@csrf_exempt
 @api_login_required
 def api_machine_detail(request, machine_id):
-    if request.method != "GET":
-        return _json_err("GET required", status=405)
     try:
         m = Machine.objects.get(id=machine_id)
-    except Machine.DoesNotExist:
+    except (Machine.DoesNotExist, ValueError, TypeError, ValidationError):
         return _json_err("Machine not found", status=404)
+
+    if request.method == "PUT":
+        current_user = request.current_user
+        if not _has_role(current_user, "Admin", "Infirmier", "Docteur"):
+            return _json_err("Insufficient permissions", status=403)
+        try:
+            body = json.loads(request.body or "{}")
+        except json.JSONDecodeError:
+            return _json_err("Invalid JSON")
+        new_status = body.get("status")
+        if new_status is not None:
+            if new_status not in dict(Machine.enumerated_status):
+                return _json_err("Statut invalide")
+            m.status = new_status
+            m.save(update_fields=["status"])
+        if "raspi_id" in body:
+            raspi_id = body.get("raspi_id")
+            RaspiDevice.objects.filter(machine=m).update(machine=None)
+            if raspi_id:
+                try:
+                    raspi = RaspiDevice.objects.get(id=raspi_id)
+                except (RaspiDevice.DoesNotExist, ValueError, TypeError):
+                    return _json_err("Raspi introuvable", status=404)
+                RaspiDevice.objects.filter(id=raspi.id).update(machine=m)
+        return _json_ok(_machine_dict(m), message="Configuration de la machine mise à jour avec succès.")
+
+    if request.method != "GET":
+        return _json_err("GET or PUT required", status=405)
     active_seance = (
         Seance.objects.filter(machine=m, status="en cours")
         .select_related("patient")
@@ -272,7 +558,7 @@ def _seance_summary(s):
     return {
         "id": str(s.id),
         "patient": {
-            "id": s.patient.id,
+            "id": _patient_pk(s.patient),
             "first_name": s.patient.first_name,
             "last_name": s.patient.last_name,
         } if s.patient else None,
@@ -313,9 +599,13 @@ def _api_sessions_list(request):
         qs = qs.filter(status=status_filter)
     patient_id = request.GET.get("patient_id", "").strip()
     if patient_id:
+        if not patient_id.isdigit():
+            return _json_err("Invalid patient_id — must be numeric")
         qs = qs.filter(patient__id=patient_id)
     machine_id = request.GET.get("machine_id", "").strip()
     if machine_id:
+        if not machine_id.isdigit():
+            return _json_err("Invalid machine_id — must be numeric")
         qs = qs.filter(machine__id=machine_id)
     date_filter = request.GET.get("date", "").strip()
     if date_filter:
@@ -370,11 +660,17 @@ def _api_sessions_create(request):
     except (TypeError, ValueError):
         return _json_err("Invalid session_date — use YYYY-MM-DD")
     try:
+        duration = int(duration)
+    except (TypeError, ValueError):
+        return _json_err("Invalid duration — must be a number")
+    try:
         patient = Patient.objects.get(id=patient_id)
-    except Patient.DoesNotExist:
+    except (Patient.DoesNotExist, ValueError, TypeError):
         return _json_err("Patient not found", status=404)
     machine = None
     if machine_db_id:
+        if not str(machine_db_id).isdigit():
+            return _json_err("Invalid machine_id — must be numeric", status=404)
         try:
             machine = Machine.objects.get(id=machine_db_id)
         except Machine.DoesNotExist:
@@ -397,7 +693,7 @@ def api_session_detail(request, session_id):
         return _json_err("GET required", status=405)
     try:
         seance = Seance.objects.select_related("patient", "machine").get(id=session_id)
-    except Seance.DoesNotExist:
+    except (Seance.DoesNotExist, ValueError, TypeError, ValidationError):
         return _json_err("Session not found", status=404)
     try:
         pre = seance.pre_measurements
@@ -518,7 +814,7 @@ def api_session_start(request, session_id):
         return _json_err("Insufficient permissions", status=403)
     try:
         seance = Seance.objects.select_related("machine").get(id=session_id)
-    except Seance.DoesNotExist:
+    except (Seance.DoesNotExist, ValueError, TypeError, ValidationError):
         return _json_err("Session not found", status=404)
     if seance.status != "planifiée":
         return _json_err(f"Session cannot be started — current status: {seance.status}")
@@ -586,7 +882,7 @@ def api_session_end(request, session_id):
         return _json_err("Insufficient permissions", status=403)
     try:
         seance = Seance.objects.select_related("machine").get(id=session_id)
-    except Seance.DoesNotExist:
+    except (Seance.DoesNotExist, ValueError, TypeError, ValidationError):
         return _json_err("Session not found", status=404)
     if seance.status != "en cours":
         return _json_err(f"Session cannot be ended — current status: {seance.status}")
@@ -607,6 +903,8 @@ def api_session_end(request, session_id):
     if seance.machine:
         seance.machine.status = "Prete"
         seance.machine.save(update_fields=["status"])
+    from seances.rapport import generate_rapport
+    generate_rapport(seance)
     return _json_ok(message="Session ended successfully")
 
 @csrf_exempt
@@ -616,7 +914,7 @@ def api_session_cancel(request, session_id):
         return _json_err("POST required", status=405)
     try:
         seance = Seance.objects.get(id=session_id)
-    except Seance.DoesNotExist:
+    except (Seance.DoesNotExist, ValueError, TypeError, ValidationError):
         return _json_err("Session not found", status=404)
     if seance.status != "planifiée":
         return _json_err("Only planned sessions can be cancelled")
@@ -636,7 +934,10 @@ def api_alerts(request):
     if level_filter in ("LOW", "MEDIUM", "HIGH"):
         seance_alerts = seance_alerts.filter(danger_level=level_filter)
     if session_id:
-        seance_alerts = seance_alerts.filter(seance__id=session_id)
+        try:
+            seance_alerts = seance_alerts.filter(seance__id=session_id)
+        except (ValueError, TypeError, ValidationError):
+            return _json_err("Invalid session_id", status=404)
     if date_filter:
         try:
             seance_alerts = seance_alerts.filter(timestamp__date=date.fromisoformat(date_filter))
@@ -663,7 +964,10 @@ def api_alerts(request):
     if status_filter in ("NEW", "ACK", "RESOLVED"):
         m_alerts = m_alerts.filter(status=status_filter)
     if session_id:
-        m_alerts = m_alerts.filter(reading__seance__id=session_id)
+        try:
+            m_alerts = m_alerts.filter(reading__seance__id=session_id)
+        except (ValueError, TypeError, ValidationError):
+            return _json_err("Invalid session_id", status=404)
     if date_filter:
         try:
             m_alerts = m_alerts.filter(timestamp__date=date.fromisoformat(date_filter))
@@ -703,7 +1007,7 @@ def api_alert_ack(request, alert_id):
         m_alert.status = "ACK"
         m_alert.save(update_fields=["status"])
         return _json_ok(message="Alert acknowledged")
-    except Alerte.DoesNotExist:
+    except (Alerte.DoesNotExist, ValueError, TypeError, ValidationError):
         try:
             alert_int_id = int(alert_id)
             s_alert = SeanceAlert.objects.get(id=alert_int_id)
@@ -721,8 +1025,13 @@ def api_alert_resolve(request, alert_id):
         m_alert.status = "RESOLVED"
         m_alert.save(update_fields=["status"])
         return _json_ok(message="Alert resolved")
-    except Alerte.DoesNotExist:
-        return _json_err("Alert not found", status=404)
+    except (Alerte.DoesNotExist, ValueError, TypeError, ValidationError):
+        try:
+            alert_int_id = int(alert_id)
+            s_alert = SeanceAlert.objects.get(id=alert_int_id)
+            return _json_ok(message="Alert resolved")
+        except (ValueError, SeanceAlert.DoesNotExist):
+            return _json_err("Alert not found", status=404)
 
 @api_login_required
 def api_dashboard(request):
@@ -1008,4 +1317,437 @@ def api_monitoring(request):
         "alerts": alerts,
         "activity": activity,
         "last_update": timezone.now().isoformat(),
+    })
+
+def _staff_profile_payload(user, profile=None):
+    if profile is None:
+        profile = Profile.objects.filter(user=user).first()
+    join_date = user.date_inscription
+    return {
+        "id": user.id,
+        "username": user.username,
+        "email": user.email or "",
+        "phone": user.phone_number or "",
+        "address": user.adress or "",
+        "role": user.role.name if user.role else "",
+        "specialite": user.specialite or "",
+        "etat": bool(user.etat),
+        "status_label": "Actif" if user.etat else "Inactif",
+        "date_inscription": str(join_date) if join_date else None,
+        "member_since": join_date.strftime("%B %Y") if join_date else "",
+        "seniority_label": _seniority_label(join_date),
+        "bio": profile.bio if profile else "",
+        "formation": profile.formation if profile else "",
+        "experience": profile.experience if profile else "",
+        "first_login": user.first_login,
+        "photo_url": (
+            profile.image.url if profile and profile.image else ""
+        ),
+    }
+
+
+@csrf_exempt
+@api_login_required
+def api_doctors(request):
+    """Mobile counterpart of accounts.views.docteurs_list + add_doctor."""
+    current_user = request.current_user
+    if request.method == "POST":
+        if not _has_role(current_user, "Admin"):
+            return _json_err("Insufficient permissions — Admin only", status=403)
+        try:
+            body = json.loads(request.body or "{}")
+        except json.JSONDecodeError:
+            return _json_err("Invalid JSON")
+        full_name = str(body.get("fullName") or body.get("username") or "").strip()
+        email = str(body.get("email") or "").strip().lower()
+        speciality = body.get("speciality") or body.get("specialite") or ""
+        phone = body.get("phone") or body.get("phone_number") or ""
+        if not full_name or not email:
+            return _json_err("Nom et email sont obligatoires.")
+        if User.objects.filter(email=email).exists():
+            return _json_err("Cet email existe déjà.")
+        if User.objects.filter(username=full_name).exists():
+            return _json_err("Ce nom d'utilisateur existe déjà.")
+        password = "".join(random.choices(string.ascii_letters + string.digits, k=8))
+        role_doctor, _ = Role.objects.get_or_create(name="Docteur")
+        user = User.objects.create(
+            username=full_name,
+            email=email,
+            specialite=speciality,
+            phone_number=phone,
+            role=role_doctor,
+            etat=False,
+            password=make_password(password),
+        )
+        return _json_ok(
+            _staff_profile_payload(user),
+            generated_password=password,
+            message=f"Docteur ajouté avec succès ! Mot de passe : {password}",
+        )
+
+    if request.method != "GET":
+        return _json_err("GET or POST required", status=405)
+    if not _has_role(current_user, "Admin"):
+        return _json_err("Insufficient permissions — Admin only", status=403)
+
+    search = request.GET.get("search", "").strip()
+    role = request.GET.get("role", "").strip()
+    status = request.GET.get("status", "").strip()
+
+    doctors_qs = User.objects.select_related("role").filter(
+        role__name__in=["Docteur", "Admin"]
+    )
+    total_doctors = doctors_qs.count()
+    isadmin_count = doctors_qs.filter(role__name="Admin").count()
+    is_actif_count = doctors_qs.filter(etat=True).count()
+
+    if search:
+        doctors_qs = doctors_qs.filter(username__icontains=search)
+    if role == "admin":
+        doctors_qs = doctors_qs.filter(role__name="Admin")
+    elif role == "doctor":
+        doctors_qs = doctors_qs.filter(role__name="Docteur")
+    if status == "active":
+        doctors_qs = doctors_qs.filter(etat=True)
+    elif status == "inactive":
+        doctors_qs = doctors_qs.filter(etat=False)
+
+    doctors_qs = doctors_qs.order_by("username")
+    profile_qs = Profile.objects.all()
+    doctors = []
+    for d in doctors_qs:
+        profile = profile_qs.filter(user=d).first()
+        experience_years = profile.experience if profile and profile.experience else 0
+        payload = _staff_profile_payload(d, profile)
+        payload.update({
+            "fullName": f"Dr.{d.username}",
+            "speciality": d.specialite or "Généraliste",
+            "roleLabel": d.role.name if d.role else "",
+            "rating": 4.8,
+            "patientsCount": getattr(d, "patients_count", 0) or 0,
+            "sessionsCount": 0,
+            "experienceYears": experience_years,
+        })
+        doctors.append(payload)
+    return _json_ok(
+        doctors,
+        count=len(doctors),
+        kpis={
+            "total_doctors": total_doctors,
+            "isadmin_count": isadmin_count,
+            "isActif_count": is_actif_count,
+        },
+    )
+
+
+@api_login_required
+def api_doctor_detail(request, doctor_id):
+    current_user = request.current_user
+    if not _has_role(current_user, "Admin"):
+        return _json_err("Insufficient permissions — Admin only", status=403)
+    if request.method != "GET":
+        return _json_err("GET required", status=405)
+    doctor = (
+        User.objects.filter(Q(role__name="Docteur") | Q(role__name="Admin"), id=doctor_id)
+        .select_related("role")
+        .first()
+    )
+    if not doctor:
+        return _json_err("Médecin introuvable.", status=404)
+    profile = Profile.objects.filter(user=doctor).first()
+    return _json_ok(_staff_profile_payload(doctor, profile))
+
+
+@csrf_exempt
+@api_login_required
+def api_nurses(request):
+    """Mobile counterpart of accounts.views.nurses_list + ajout_infirmier."""
+    current_user = request.current_user
+    if request.method == "POST":
+        if not _has_role(current_user, "Admin", "Docteur"):
+            return _json_err("Insufficient permissions", status=403)
+        try:
+            body = json.loads(request.body or "{}")
+        except json.JSONDecodeError:
+            return _json_err("Invalid JSON")
+        nom = str(body.get("nom") or body.get("username") or "").strip()
+        email = str(body.get("email") or "").strip().lower()
+        telephone = str(body.get("telephone") or body.get("phone") or "").strip()
+        if not nom or not email:
+            return _json_err("Nom et email sont obligatoires.")
+        if User.objects.filter(email=email).exists():
+            return _json_err("Cet email existe déjà.")
+        if User.objects.filter(username=nom).exists():
+            return _json_err("Ce nom d'utilisateur existe déjà.")
+        password = "".join(random.choices(string.ascii_letters + string.digits, k=8))
+        role_infirmier, _ = Role.objects.get_or_create(name="Infirmier")
+        user = User(
+            username=nom,
+            email=email,
+            phone_number=telephone,
+            etat=False,
+            password=make_password(password),
+            role=role_infirmier,
+        )
+        user.save()
+        return _json_ok(
+            _staff_profile_payload(user),
+            generated_password=password,
+            message=f"Infirmier ajouté. Mot de passe : {password}",
+        )
+
+    if request.method != "GET":
+        return _json_err("GET or POST required", status=405)
+    if not _has_role(current_user, "Admin", "Docteur"):
+        return _json_err("Insufficient permissions", status=403)
+
+    search_query = request.GET.get("search", "").strip()
+    status_filter = request.GET.get("status", "").strip().lower()
+
+    nurses_qs = (
+        User.objects.select_related("role")
+        .filter(role__name__iexact="Infirmier")
+        .order_by("username")
+    )
+    total_nurses = nurses_qs.count()
+    kpi_active_nurses = nurses_qs.filter(etat=True).count()
+    if search_query:
+        nurses_qs = nurses_qs.filter(
+            Q(username__icontains=search_query)
+            | Q(email__icontains=search_query)
+            | Q(phone_number__icontains=search_query)
+        )
+    if status_filter == "active":
+        nurses_qs = nurses_qs.filter(etat=True)
+    elif status_filter == "inactive":
+        nurses_qs = nurses_qs.filter(etat=False)
+
+    nurses = []
+    for n in nurses_qs:
+        assigned_mgr = getattr(n, "assigned_doctors", None)
+        doctor_names = [d.username for d in assigned_mgr.all()] if assigned_mgr else []
+        payload = _staff_profile_payload(n)
+        payload.update({
+            "firstName": n.username,
+            "lastName": "",
+            "assignedDoctorsText": ", ".join(doctor_names) if doctor_names else "Aucun",
+            "patientsCount": 0,
+            "activeSessions": 0,
+            "scheduledSessions": 0,
+        })
+        nurses.append(payload)
+    return _json_ok(
+        nurses,
+        count=len(nurses),
+        kpis={
+            "total_nurses": total_nurses,
+            "kpi_active_nurses": kpi_active_nurses,
+            "kpi_total_patients": 0,
+            "kpi_active_sessions": 0,
+            "kpi_scheduled_sessions": 0,
+            "kpi_avg_load": 0,
+        },
+    )
+
+
+@api_login_required
+def api_nurse_detail(request, nurse_id):
+    current_user = request.current_user
+    if not _has_role(current_user, "Admin", "Docteur"):
+        return _json_err("Insufficient permissions", status=403)
+    if request.method != "GET":
+        return _json_err("GET required", status=405)
+    nurse = (
+        User.objects.filter(role__name="Infirmier", id=nurse_id)
+        .select_related("role")
+        .first()
+    )
+    if not nurse:
+        return _json_err("Infirmier introuvable.", status=404)
+    profile = Profile.objects.filter(user=nurse).first()
+    return _json_ok(_staff_profile_payload(nurse, profile))
+
+
+@csrf_exempt
+@api_login_required
+def api_profile(request):
+    """Mobile counterpart of accounts.views.profile."""
+    current_user = request.current_user
+    profile, _ = Profile.objects.get_or_create(user=current_user)
+
+    if request.method == "GET":
+        return _json_ok(_staff_profile_payload(current_user, profile))
+
+    if request.method not in ("PUT", "POST"):
+        return _json_err("GET, PUT or POST required", status=405)
+
+    try:
+        body = json.loads(request.body or "{}")
+    except json.JSONDecodeError:
+        return _json_err("Invalid JSON")
+
+    old_password = body.get("old_password") or ""
+    new_password = body.get("password") or ""
+
+    if current_user.first_login:
+        if not old_password or not new_password:
+            return _json_err(
+                "Vous devez changer votre mot de passe pour pouvoir enregistrer."
+            )
+        if not check_password(old_password, current_user.password):
+            return _json_err("Ancien mot de passe incorrect.")
+        current_user.password = make_password(new_password)
+        current_user.first_login = False
+        current_user.save()
+        return _json_ok(
+            _staff_profile_payload(current_user, profile),
+            message="Mot de passe mis à jour avec succès !",
+        )
+
+    profile.bio = body.get("bio", profile.bio) or ""
+    profile.formation = body.get("formation", profile.formation) or ""
+    profile.experience = body.get("experience", profile.experience) or ""
+    profile.save()
+
+    # Photo de profil — same contract as accounts.views.profile:
+    # a base64 data-URL "cropped_image" (web CropperJS) is stored directly;
+    # a raw file upload is not supported through this JSON endpoint.
+    cropped_data = body.get("cropped_image")
+    if cropped_data:
+        try:
+            format, imgstr = cropped_data.split(";base64,")
+            ext = format.split("/")[-1]
+            file_name = f"profile_{uuid.uuid4()}.{ext}"
+            profile.image = ContentFile(base64.b64decode(imgstr), name=file_name)
+            profile.save()
+        except (ValueError, TypeError, binascii.Error):
+            return _json_err("Image invalide.")
+
+    new_phone = body.get("phone_number")
+    if new_phone is not None and new_phone != current_user.phone_number:
+        current_user.phone_number = new_phone
+        current_user.save(update_fields=["phone_number"])
+
+    new_adresse = body.get("adress") or body.get("address")
+    if new_adresse is not None and new_adresse != current_user.adress:
+        current_user.adress = new_adresse
+        current_user.save(update_fields=["adress"])
+
+    new_email = body.get("email")
+    if new_email is not None and new_email != current_user.email:
+        current_user.email = new_email
+        current_user.save(update_fields=["email"])
+
+    if new_password:
+        if not check_password(old_password, current_user.password):
+            return _json_err("Ancien mot de passe incorrect.")
+        current_user.password = make_password(new_password)
+        current_user.save(update_fields=["password"])
+
+    return _json_ok(
+        _staff_profile_payload(current_user, profile),
+        message="Profil mis à jour avec succès !",
+    )
+
+
+def _device_dict(d):
+    return {
+        "id": str(d.id),
+        "raspi_id": d.raspi_id,
+        "description": d.description,
+        "is_active": d.is_active,
+        "last_seen": d.last_seen.isoformat() if d.last_seen else None,
+        "machine": {
+            "id": d.machine.id,
+            "machine_id": d.machine.machine_id,
+        } if d.machine_id else None,
+    }
+
+
+@csrf_exempt
+@api_login_required
+def api_devices(request):
+    """Mobile counterpart of machines.views.raspi_management + add_raspi."""
+    current_user = request.current_user
+    if request.method == "POST":
+        if not _has_role(current_user, "Admin"):
+            return _json_err("Insufficient permissions — Admin only", status=403)
+        try:
+            body = json.loads(request.body or "{}")
+        except json.JSONDecodeError:
+            return _json_err("Invalid JSON")
+        raspi_id = str(body.get("raspi_id", "")).strip()
+        description = str(body.get("description", "")).strip()
+        if not raspi_id:
+            return _json_err("raspi_id requis")
+        if RaspiDevice.objects.filter(raspi_id=raspi_id).exists():
+            return _json_err("Ce Raspi existe déjà", status=409)
+        device = RaspiDevice.objects.create(raspi_id=raspi_id, description=description)
+        return _json_ok(_device_dict(device), message="Appareil ajouté avec succès !")
+
+    if request.method != "GET":
+        return _json_err("GET or POST required", status=405)
+    if not _has_role(current_user, "Admin"):
+        return _json_err("Insufficient permissions — Admin only", status=403)
+
+    devices = list(RaspiDevice.objects.select_related("machine").order_by("raspi_id"))
+    machines = Machine.objects.all().order_by("machine_id")
+    assigned_machine_ids = [d.machine_id for d in devices if d.machine_id]
+    total = len(devices)
+    assigned = sum(1 for d in devices if d.machine_id)
+    free = sum(1 for d in devices if not d.machine_id)
+    inactive = sum(
+        1
+        for d in devices
+        if d.last_seen is None
+        or (timezone.now() - d.last_seen).total_seconds() > 14400
+    )
+    return _json_ok(
+        [_device_dict(d) for d in devices],
+        count=total,
+        stats={
+            "total": total,
+            "assigned": assigned,
+            "free": free,
+            "inactive": inactive,
+        },
+        machines=[
+            {"id": m.id, "machine_id": m.machine_id, "location": m.location}
+            for m in machines
+        ],
+        assigned_machine_ids=assigned_machine_ids,
+    )
+
+
+@csrf_exempt
+@api_login_required
+def api_device_assign(request, raspi_id):
+    """Same contract as machines.views.assign_machine."""
+    if request.method != "POST":
+        return _json_err("POST required", status=405)
+    current_user = request.current_user
+    if not _has_role(current_user, "Admin", "Infirmier", "Docteur"):
+        return _json_err("Insufficient permissions", status=403)
+    try:
+        body = json.loads(request.body or "{}")
+        machine_id = body.get("machine_id")
+    except json.JSONDecodeError:
+        return _json_err("JSON invalide")
+    try:
+        device = RaspiDevice.objects.get(id=raspi_id)
+    except (RaspiDevice.DoesNotExist, ValueError, TypeError, ValidationError):
+        return _json_err("Raspi introuvable", status=404)
+    if machine_id:
+        try:
+            machine = Machine.objects.get(id=machine_id)
+        except (Machine.DoesNotExist, ValueError, TypeError, ValidationError):
+            return _json_err("Machine introuvable", status=404)
+        RaspiDevice.objects.filter(machine=machine).exclude(id=raspi_id).update(machine=None)
+        device.machine = machine
+    else:
+        device.machine = None
+    device.save(update_fields=["machine"])
+    return _json_ok({
+        "raspi_id": device.raspi_id,
+        "machine": device.machine.machine_id if device.machine else None,
     })

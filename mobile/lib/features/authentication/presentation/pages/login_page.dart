@@ -31,6 +31,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   final _passwordController = TextEditingController();
   final _emailController = TextEditingController();
   bool _showReset = false;
+  bool _isSendingReset = false;
 
   @override
   void dispose() {
@@ -48,20 +49,38 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     }
   }
 
-  void _submitReset() {
+  Future<void> _submitReset() async {
     // Django answers neutrally on purpose (security): the same message is
     // shown whether or not the email exists. Replicated here.
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text(
-          'Si un compte existe avec cet email, un lien a été envoyé.',
+    setState(() => _isSendingReset = true);
+    try {
+      await ref
+          .read(authStateProvider.notifier)
+          .requestPasswordReset(_emailController.text.trim());
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Si un compte existe avec cet email, un lien a été envoyé.',
+          ),
         ),
-      ),
-    );
-    setState(() {
-      _showReset = false;
-      _emailController.clear();
-    });
+      );
+      setState(() {
+        _showReset = false;
+        _emailController.clear();
+      });
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Erreur lors de l\'envoi : ${e.toString().replaceAll('ApiException: ', '')}',
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isSendingReset = false);
+    }
   }
 
   @override
@@ -273,11 +292,13 @@ class _LoginPageState extends ConsumerState<LoginPage> {
             SizedBox(
               height: 44,
               child: ElevatedButton(
-                onPressed: () {
-                  if (_resetFormKey.currentState?.validate() ?? false) {
-                    _submitReset();
-                  }
-                },
+                onPressed: _isSendingReset
+                    ? null
+                    : () {
+                        if (_resetFormKey.currentState?.validate() ?? false) {
+                          _submitReset();
+                        }
+                      },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: _djangoBlue,
                   foregroundColor: Colors.white,
@@ -286,10 +307,22 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                     borderRadius: BorderRadius.circular(6),
                   ),
                 ),
-                child: const Text(
-                  'Envoyer le lien',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-                ),
+                child: _isSendingReset
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Text(
+                        'Envoyer le lien',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
               ),
             ),
             const SizedBox(height: 12),
