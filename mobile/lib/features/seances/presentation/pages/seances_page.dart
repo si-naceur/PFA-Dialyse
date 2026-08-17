@@ -10,6 +10,7 @@ import '../../../machines/domain/entities/machine_entity.dart';
 import '../../../machines/presentation/providers/machines_provider.dart';
 import '../../../patients/presentation/providers/patients_provider.dart';
 import '../../../seances_history/domain/entities/seance_history_entity.dart';
+import '../../../seances_history/presentation/providers/seances_history_provider.dart';
 import '../providers/seances_planning_provider.dart';
 
 /// Flutter counter-part of `seances/templates/planning.html`:
@@ -741,8 +742,7 @@ class _ScheduleCard extends ConsumerWidget {
                   if (session.status == 'en cours')
                     Expanded(
                       child: ElevatedButton(
-                        onPressed: () =>
-                            context.go(AppRouter.postSessionRoute(session.id)),
+                        onPressed: () => _confirmEnd(context),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFF16A34A),
                           foregroundColor: Colors.white,
@@ -761,6 +761,34 @@ class _ScheduleCard extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  Future<void> _confirmEnd(BuildContext context) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Terminer la séance ?'),
+        content: Text(
+          'Confirmer la fin de la séance de ${session.patientNameOrId} ? '
+          'Cette action est définitive.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Non'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text(
+              'Oui, terminer',
+              style: TextStyle(color: Color(0xFF16A34A)),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !context.mounted) return;
+    context.go(AppRouter.postSessionRoute(session.id));
   }
 
   Future<void> _confirmCancel(BuildContext context, WidgetRef ref) async {
@@ -1152,6 +1180,9 @@ class _NewSessionSheetState extends ConsumerState<_NewSessionSheet> {
         notes: _notes,
         debit: _debit,
       );
+      // The new session affects the history list and the patient dossier.
+      ref.invalidate(seancesHistoryProvider);
+      ref.invalidate(patientDetailProvider(_patientId!));
       if (mounted) Navigator.of(context).pop(true);
     } catch (e) {
       if (!mounted) return;

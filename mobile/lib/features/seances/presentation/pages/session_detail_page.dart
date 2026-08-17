@@ -189,8 +189,34 @@ class SessionDetailPage extends ConsumerWidget {
                 ),
               if (detail.isInProgress)
                 ElevatedButton(
-                  onPressed: () =>
-                      context.go(AppRouter.postSessionRoute(detail.id)),
+                  onPressed: () async {
+                    final ok = await showDialog<bool>(
+                      context: context,
+                      builder: (ctx) => AlertDialog(
+                        title: const Text('Terminer la séance ?'),
+                        content: const Text(
+                          'Confirmer la fin de cette séance ? '
+                          'Cette action est définitive.',
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(ctx, false),
+                            child: const Text('Non'),
+                          ),
+                          TextButton(
+                            onPressed: () => Navigator.pop(ctx, true),
+                            child: const Text(
+                              'Oui, terminer',
+                              style: TextStyle(color: Color(0xFF16A34A)),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                    if (ok == true && context.mounted) {
+                      context.go(AppRouter.postSessionRoute(detail.id));
+                    }
+                  },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF16A34A),
                     foregroundColor: Colors.white,

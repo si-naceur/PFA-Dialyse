@@ -147,7 +147,7 @@ class DevicesPage extends ConsumerWidget {
                   onPressed: () async {
                     if (!formKey.currentState!.validate()) return;
                     try {
-                      await ref.read(devicesDatasourceProvider).addDevice(
+                      await ref.read(devicesRepositoryProvider).addDevice(
                         raspiId: idCtrl.text.trim(),
                         description: descCtrl.text.trim(),
                       );
@@ -213,7 +213,7 @@ class DevicesPage extends ConsumerWidget {
                     backgroundColor: const Color(0xFF2563EB),
                     onPressed: () async {
                       try {
-                        await ref.read(devicesDatasourceProvider).assignMachine(
+                        await ref.read(devicesRepositoryProvider).assignMachine(
                           deviceId: device.id,
                           machineId: selected,
                         );

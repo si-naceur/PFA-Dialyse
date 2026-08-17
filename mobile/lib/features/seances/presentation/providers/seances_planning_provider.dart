@@ -1,7 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../authentication/presentation/providers/auth_provider.dart';
+import '../../../patients/presentation/providers/patients_provider.dart';
 import '../../../seances_history/domain/entities/seance_history_entity.dart';
+import '../../../seances_history/presentation/providers/seances_history_provider.dart';
 import '../../data/datasources/seances_remote_datasource.dart';
 import '../../data/repositories/seances_repository_impl.dart';
 import '../../domain/entities/seance_detail_entity.dart';
@@ -143,6 +147,30 @@ class SeancesPlanningNotifier extends AsyncNotifier<SeancesPlanningData> {
   Future<void> cancelSession(String sessionId) async {
     final repository = ref.read(seancesRepositoryProvider);
     await repository.cancelSession(sessionId);
+    // The cancelled session affects the history list and the patient dossier.
+    ref.invalidate(seancesHistoryProvider);
+    final current = state.valueOrNull;
+    String? patientId;
+    if (current != null) {
+      for (final s in current.daySessions) {
+        if (s.id == sessionId) {
+          patientId = s.patientId;
+          break;
+        }
+      }
+      if (patientId == null) {
+        for (final s in current.searchResults ??
+            const <SeanceHistoryEntity>[]) {
+          if (s.id == sessionId) {
+            patientId = s.patientId;
+            break;
+          }
+        }
+      }
+    }
+    if (patientId != null) {
+      ref.invalidate(patientDetailProvider(patientId));
+    }
     await refresh();
   }
 }
@@ -152,10 +180,71 @@ final seancesPlanningProvider =
       SeancesPlanningNotifier.new,
     );
 
-final seanceDetailProvider = FutureProvider.family<SeanceDetailEntity, String>((
-  ref,
-  sessionId,
-) {
-  final repository = ref.watch(seancesRepositoryProvider);
-  return repository.getSessionDetail(sessionId);
-});
+/// Session detail backed by GET /api/sessions/<uuid>/. Polls every 3 seconds
+/// while the page is open (mirrors the Django `session_detail.html` live
+/// behaviour and the SurveillanceNotifier pattern), keeping the last payload
+/// so the charts/readings/alerts stay up to date without flashing a spinner.
+/// Polling stops as soon as the session is no longer "en cours".
+class SeanceDetailNotifier extends FamilyAsyncNotifier<SeanceDetailEntity, String> {
+  Timer? _timer;
+  bool _fetching = false;
+  bool _disposed = false;
+
+  @override
+  Future<SeanceDetailEntity> build(String sessionId) {
+    _disposed = false;
+    ref.onDispose(() {
+      _disposed = true;
+      _stopPolling();
+    });
+    _startPolling();
+    return _fetch();
+  }
+
+  Future<SeanceDetailEntity> _fetch() async {
+    final repository = ref.read(seancesRepositoryProvider);
+    return repository.getSessionDetail(arg);
+  }
+
+  void _startPolling() {
+    if (_timer != null || _disposed) return;
+    _timer = Timer.periodic(const Duration(seconds: 3), (_) async {
+      if (_fetching || _disposed) return;
+      _fetching = true;
+      try {
+        final data = await _fetch();
+        if (!_disposed) {
+          state = AsyncValue.data(data);
+          // No need to keep polling once the session has finished.
+          if (!data.isInProgress) _stopPolling();
+        }
+      } catch (err, stack) {
+        // Keep the previously loaded payload; surface an error only when there
+        // is nothing to show yet.
+        if (!_disposed && state is! AsyncData) {
+          state = AsyncValue.error(err, stack);
+        }
+      } finally {
+        _fetching = false;
+      }
+    });
+  }
+
+  void _stopPolling() {
+    _timer?.cancel();
+    _timer = null;
+  }
+
+  /// Full reload used by pull-to-refresh / the refresh action.
+  Future<void> refresh() async {
+    state = const AsyncLoading();
+    state = await AsyncValue.guard(_fetch);
+  }
+}
+
+final seanceDetailProvider = AsyncNotifierProvider.family<
+    SeanceDetailNotifier,
+    SeanceDetailEntity,
+    String>(
+  SeanceDetailNotifier.new,
+);

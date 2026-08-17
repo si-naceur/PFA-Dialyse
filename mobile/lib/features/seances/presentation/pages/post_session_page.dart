@@ -6,6 +6,9 @@ import '../../../../core/network/api_exception.dart';
 import '../../../../core/routes/app_router.dart';
 import '../../../../core/widgets/app_shell.dart';
 import '../../../../core/widgets/custom_button.dart';
+import '../../../machines/presentation/providers/machines_provider.dart';
+import '../../../patients/presentation/providers/patients_provider.dart';
+import '../../../seances_history/presentation/providers/seances_history_provider.dart';
 import '../../domain/entities/seance_detail_entity.dart';
 import '../providers/seances_planning_provider.dart';
 
@@ -330,6 +333,29 @@ class _PostSessionPageState extends ConsumerState<PostSessionPage> {
 
   Future<void> _submit() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Valider la fin de la séance ?'),
+        content: const Text(
+          'La séance sera marquée comme terminée. Cette action est définitive.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Non'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text(
+              'Oui, terminer',
+              style: TextStyle(color: Color(0xFF16A34A)),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
     setState(() => _submitting = true);
     try {
       final bp = '${_bpSysCtrl.text.trim()}/${_bpDiaCtrl.text.trim()}';
@@ -344,8 +370,23 @@ class _PostSessionPageState extends ConsumerState<PostSessionPage> {
             saturation: double.parse(_satCtrl.text.replaceAll(',', '.')),
             complications: _complicationsText,
           );
+      // Capture the detail before invalidation clears its cached state.
+      final detail = ref.read(seanceDetailProvider(widget.sessionId)).valueOrNull;
+      final detailPatientId = detail?.patientId;
+      final detailMachineDbId = detail?.machineDbId;
+
       ref.invalidate(seanceDetailProvider(widget.sessionId));
       await ref.read(seancesPlanningProvider.notifier).refresh();
+      // Ending changes the session status, the machine state (→ "Prete")
+      // and the patient dossier.
+      ref.invalidate(seancesHistoryProvider);
+      ref.invalidate(machinesProvider);
+      if (detailPatientId != null) {
+        ref.invalidate(patientDetailProvider(detailPatientId));
+      }
+      if (detailMachineDbId != null) {
+        ref.invalidate(machineDetailProvider(detailMachineDbId));
+      }
       if (!mounted) return;
       context.go(AppRouter.seances);
       ScaffoldMessenger.of(context).showSnackBar(

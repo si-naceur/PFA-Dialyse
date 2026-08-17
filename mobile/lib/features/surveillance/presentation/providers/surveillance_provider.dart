@@ -18,7 +18,12 @@ final surveillanceRepositoryProvider = Provider<SurveillanceRepository>((ref) {
 /// payload is kept on each tick so the page never flashes a spinner; errors
 /// are only surfaced when there is nothing to show yet (mirrors the
 /// MonitoringNotifier pattern).
-class SurveillanceNotifier extends AsyncNotifier<SurveillanceLiveEntity> {
+///
+/// `autoDispose`: the timer and the auth subscription are torn down as soon as
+/// the provider is no longer listened to (i.e. the user leaves the
+/// Surveillance dashboard) and restarted on the next visit.
+class SurveillanceNotifier
+    extends AutoDisposeAsyncNotifier<SurveillanceLiveEntity> {
   Timer? _timer;
   bool _fetching = false;
   bool _disposed = false;
@@ -98,7 +103,6 @@ class SurveillanceNotifier extends AsyncNotifier<SurveillanceLiveEntity> {
   }
 }
 
-final surveillanceLiveProvider =
-    AsyncNotifierProvider<SurveillanceNotifier, SurveillanceLiveEntity>(
-      SurveillanceNotifier.new,
-    );
+final surveillanceLiveProvider = AsyncNotifierProvider.autoDispose<
+    SurveillanceNotifier,
+    SurveillanceLiveEntity>(SurveillanceNotifier.new);

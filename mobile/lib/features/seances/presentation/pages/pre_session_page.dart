@@ -6,6 +6,9 @@ import '../../../../core/network/api_exception.dart';
 import '../../../../core/routes/app_router.dart';
 import '../../../../core/widgets/app_shell.dart';
 import '../../../../core/widgets/custom_button.dart';
+import '../../../machines/presentation/providers/machines_provider.dart';
+import '../../../patients/presentation/providers/patients_provider.dart';
+import '../../../seances_history/presentation/providers/seances_history_provider.dart';
 import '../../domain/entities/seance_detail_entity.dart';
 import '../providers/seances_planning_provider.dart';
 
@@ -288,8 +291,23 @@ class _PreSessionPageState extends ConsumerState<PreSessionPage> {
             thresholds: thresholds,
           );
 
+      // Capture the detail before invalidation clears its cached state.
+      final detail = ref.read(seanceDetailProvider(widget.sessionId)).valueOrNull;
+      final detailPatientId = detail?.patientId;
+      final detailMachineDbId = detail?.machineDbId;
+
       ref.invalidate(seanceDetailProvider(widget.sessionId));
       await ref.read(seancesPlanningProvider.notifier).refresh();
+      // Starting changes the session status, the machine state (→ "Reserve")
+      // and the patient dossier.
+      ref.invalidate(seancesHistoryProvider);
+      ref.invalidate(machinesProvider);
+      if (detailPatientId != null) {
+        ref.invalidate(patientDetailProvider(detailPatientId));
+      }
+      if (detailMachineDbId != null) {
+        ref.invalidate(machineDetailProvider(detailMachineDbId));
+      }
       if (!mounted) return;
       context.go(AppRouter.seances);
       ScaffoldMessenger.of(context).showSnackBar(

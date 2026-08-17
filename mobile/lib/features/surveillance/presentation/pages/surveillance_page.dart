@@ -1,12 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 import '../../../../core/network/api_exception.dart';
-import '../../../../core/routes/app_router.dart';
 import '../../../../core/widgets/app_shell.dart';
 import '../../../../core/widgets/custom_button.dart';
-import '../../../authentication/presentation/providers/auth_provider.dart';
 import '../../domain/entities/live_monitoring_entity.dart';
 import '../providers/surveillance_provider.dart';
 import '../widgets/live_monitoring_widgets.dart';
@@ -26,16 +23,6 @@ class SurveillancePage extends ConsumerWidget {
     final notifier = ref.read(surveillanceLiveProvider.notifier);
 
     return AppShell(
-      actions: [
-        IconButton(
-          icon: const Icon(Icons.logout_rounded),
-          tooltip: 'Déconnexion',
-          onPressed: () async {
-            await ref.read(authStateProvider.notifier).logout();
-            if (context.mounted) context.go(AppRouter.login);
-          },
-        ),
-      ],
       body: RefreshIndicator(
         color: kSurveillanceBlue,
         onRefresh: notifier.refresh,
