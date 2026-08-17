@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 """
 
 import importlib.util
+import os
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -21,14 +22,26 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/4.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-rabw!eg*&6f*vrli4(^!rmwgy)i2)tu5s-19pi-_k*!88-x8z4'
+# Override via the DJANGO_SECRET_KEY environment variable in production.
+SECRET_KEY = os.environ.get(
+    "DJANGO_SECRET_KEY",
+    "django-insecure-rabw!eg*&6f*vrli4(^!rmwgy)i2)tu5s-19pi-_k*!88-x8z4",
+)
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.environ.get("DJANGO_DEBUG", "True").lower() in ("1", "true", "yes")
+
+# DEMO/TEST mode: enables the `run_demo_simulation` management command which
+# generates simulated LiveMeasurement rows for active sessions. Disabled by
+# default; production behavior is unchanged.
+DEMO_MODE = os.environ.get("DEMO_MODE", "false").lower() in ("1", "true", "yes")
 
 ALLOWED_HOSTS = [
-    "127.0.0.1",
-    "localhost",
+    h.strip()
+    for h in os.environ.get(
+        "DJANGO_ALLOWED_HOSTS", "127.0.0.1,localhost"
+    ).split(",")
+    if h.strip()
 ]
 
 # Django does not accept port wildcards (e.g. "http://localhost:*").
@@ -185,13 +198,26 @@ MESSAGE_TAGS = {
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
-EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
-EMAIL_HOST = "smtp.gmail.com"
-EMAIL_PORT = 587
-EMAIL_USE_TLS = True
-EMAIL_HOST_USER = "amina.abid@enis.tn"
-EMAIL_HOST_PASSWORD = "xnii qhqd arku qvuc"
-DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
+# Email — SMTP credentials MUST come from environment variables.
+# Never commit real SMTP passwords/API keys to the repository.
+# When no SMTP password is configured (local dev), fall back to the
+# console backend so password-reset flows keep working without sending mail.
+if os.environ.get("EMAIL_HOST_PASSWORD"):
+    EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+    EMAIL_HOST = os.environ.get("EMAIL_HOST", "smtp.gmail.com")
+    EMAIL_PORT = int(os.environ.get("EMAIL_PORT", "587"))
+    EMAIL_USE_TLS = os.environ.get("EMAIL_USE_TLS", "True").lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+    EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER", "")
+    EMAIL_HOST_PASSWORD = os.environ["EMAIL_HOST_PASSWORD"]
+    DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", EMAIL_HOST_USER)
+else:
+    EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+    EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER", "")
+    DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", EMAIL_HOST_USER or "no-reply@localhost")
 
 
 # ---------------------------------------------------------------------------

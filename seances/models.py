@@ -161,6 +161,11 @@ class Alert(models.Model):
         ('MEDIUM', 'Modéré'),
         ('HIGH',   'Critique'),
     ]
+    STATUS_CHOICES = [
+        ('NEW', 'Nouvelle'),
+        ('ACK', 'Acquittée'),
+        ('RESOLVED', 'Résolue'),
+    ]
 
     seance           = models.ForeignKey(Seance, on_delete=models.CASCADE, related_name="alerts")
     timestamp        = models.DateTimeField(auto_now_add=True)
@@ -168,6 +173,7 @@ class Alert(models.Model):
     message          = models.TextField()
     danger_level     = models.CharField(max_length=10, choices=DANGER_LEVELS)
     recommended_action = models.TextField()
+    status           = models.CharField(max_length=10, choices=STATUS_CHOICES, default='NEW')
 
     class Meta:
         db_table = 'alerts'

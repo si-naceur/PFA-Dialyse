@@ -245,7 +245,7 @@ if(data.measurements && data.measurements.length > 0){
 
     sessions.push({
 
-        patient:"Patient test",
+        patient:m.patient,
 
         machine:m.machine,
 
@@ -919,7 +919,7 @@ function ackAlert(id){
 
 
     fetch(
-        `/monitoring/alert/${id}/ack/`,
+        `/api/alerts/${id}/ack/`,
         {
             method:"POST",
 
@@ -959,7 +959,7 @@ function ackAlert(id){
 function resolveAlert(id){
 
     fetch(
-        `/monitoring/alert/${id}/resolve/`,
+        `/api/alerts/${id}/resolve/`,
         {
             method:"POST",
 

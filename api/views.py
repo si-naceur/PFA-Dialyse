@@ -2,8 +2,7 @@
 api/views.py — PFA-Dialyse Mobile REST API (Phase 1)
 """
 import json
-import random
-import string
+import secrets
 from datetime import date, datetime, timedelta
 from django.http import JsonResponse
 from django.utils import timezone
@@ -818,6 +817,14 @@ def api_session_start(request, session_id):
         return _json_err("Session not found", status=404)
     if seance.status != "planifiée":
         return _json_err(f"Session cannot be started — current status: {seance.status}")
+    if seance.machine and Seance.objects.filter(
+        machine=seance.machine,
+        status="en cours"
+    ).exclude(id=seance.id).exists():
+        return _json_err(
+            "Machine déjà occupée par une séance en cours",
+            status=409
+        )
     try:
         body = json.loads(request.body)
     except (json.JSONDecodeError, ValueError):
@@ -933,6 +940,8 @@ def api_alerts(request):
     date_filter = request.GET.get("date", "").strip()
     if level_filter in ("LOW", "MEDIUM", "HIGH"):
         seance_alerts = seance_alerts.filter(danger_level=level_filter)
+    if status_filter in ("NEW", "ACK", "RESOLVED"):
+        seance_alerts = seance_alerts.filter(status=status_filter)
     if session_id:
         try:
             seance_alerts = seance_alerts.filter(seance__id=session_id)
@@ -956,7 +965,7 @@ def api_alerts(request):
             "danger_level": a.danger_level,
             "severity": a.danger_level,
             "recommended_action": a.recommended_action,
-            "status": "NEW",
+            "status": a.status,
             "timestamp": a.timestamp.isoformat() if a.timestamp else None,
             "created_at": a.timestamp.isoformat() if a.timestamp else None,
         })
@@ -1011,6 +1020,8 @@ def api_alert_ack(request, alert_id):
         try:
             alert_int_id = int(alert_id)
             s_alert = SeanceAlert.objects.get(id=alert_int_id)
+            s_alert.status = "ACK"
+            s_alert.save(update_fields=["status"])
             return _json_ok(message="Alert acknowledged")
         except (ValueError, SeanceAlert.DoesNotExist):
             return _json_err("Alert not found", status=404)
@@ -1029,6 +1040,8 @@ def api_alert_resolve(request, alert_id):
         try:
             alert_int_id = int(alert_id)
             s_alert = SeanceAlert.objects.get(id=alert_int_id)
+            s_alert.status = "RESOLVED"
+            s_alert.save(update_fields=["status"])
             return _json_ok(message="Alert resolved")
         except (ValueError, SeanceAlert.DoesNotExist):
             return _json_err("Alert not found", status=404)
@@ -1042,7 +1055,8 @@ def api_dashboard(request):
         "active_sessions": Seance.objects.filter(status="en cours").count(),
         "available_machines": Machine.objects.filter(status="Prete").count(),
         "total_machines": Machine.objects.count(),
-        "active_alerts": Alerte.objects.filter(status="NEW").count(),
+        "active_alerts": Alerte.objects.filter(status="NEW").count()
+        + SeanceAlert.objects.filter(status="NEW").count(),
         "patients_count": Patient.objects.count(),
         "today_sessions": Seance.objects.filter(session_date=today).count(),
     }
@@ -1133,6 +1147,57 @@ def push_measurement(request):
     except Exception as e:
         return _json_err(str(e), status=500)
 
+def _normalize_level(level):
+    """monitoring.Alerte stores RED/YELLOW; seances.Alert stores HIGH/MEDIUM.
+    Normalize to the web/Flutter convention HIGH/MEDIUM/LOW."""
+    lvl = (level or "").upper()
+    if lvl == "RED":
+        return "HIGH"
+    if lvl == "YELLOW":
+        return "MEDIUM"
+    return lvl
+
+
+def _live_alerts(limit=50):
+    """Merged, normalized alert feed used by the web live pages
+    (/api/real-monitoring/) and the mobile live page (/api/monitoring/live/).
+    Combines monitoring.Alerte (threshold engine) and seances.Alert
+    (analyser_mesure) so every surface shows the same alerts."""
+    items = []
+
+    for a in Alerte.objects.select_related(
+        "reading__seance__machine", "reading__seance__patient"
+    ).order_by("-timestamp")[:limit]:
+        seance = a.reading.seance if a.reading else None
+        items.append({
+            "id": str(a.id),
+            "source": "monitoring.Alerte",
+            "niveau": _normalize_level(a.niveau),
+            "message": a.message,
+            "status": a.status,
+            "machine": seance.machine.machine_id if seance and seance.machine else None,
+            "time": a.timestamp.isoformat() if a.timestamp else None,
+            "timestamp": a.timestamp.isoformat() if a.timestamp else None,
+        })
+
+    for a in SeanceAlert.objects.select_related(
+        "seance__machine", "seance__patient"
+    ).order_by("-timestamp")[:limit]:
+        items.append({
+            "id": str(a.id),
+            "source": "seances.Alert",
+            "niveau": _normalize_level(a.danger_level),
+            "message": a.message,
+            "status": a.status,
+            "machine": a.seance.machine.machine_id if a.seance.machine else None,
+            "time": a.timestamp.isoformat() if a.timestamp else None,
+            "timestamp": a.timestamp.isoformat() if a.timestamp else None,
+        })
+
+    items.sort(key=lambda x: x["timestamp"] or "", reverse=True)
+    return items[:limit]
+
+
 def real_monitoring(request):
     measurements = LiveMeasurement.objects.select_related("seance__machine", "seance__patient").order_by("-timestamp")[:20]
     data = []
@@ -1140,8 +1205,16 @@ def real_monitoring(request):
         alerts = list(m.alertes.values("id", "niveau", "message", "status", "timestamp"))
         for a in alerts:
             a["id"] = str(a["id"])
+            a["niveau"] = _normalize_level(a["niveau"])
             if a.get("timestamp"):
                 a["timestamp"] = a["timestamp"].isoformat()
+        levels = {a["niveau"] for a in alerts if a.get("status") == "NEW"}
+        if "HIGH" in levels:
+            status_label = "CRITICAL"
+        elif "MEDIUM" in levels:
+            status_label = "WARNING"
+        else:
+            status_label = "NORMAL"
         data.append({
             "id": str(m.id),
             "machine": str(m.seance.machine) if m.seance.machine else None,
@@ -1149,6 +1222,7 @@ def real_monitoring(request):
             "patient": str(m.seance.patient) if m.seance.patient else None,
             "seance_id": str(m.seance.id),
             "timestamp": m.timestamp.isoformat() if m.timestamp else None,
+            "time": m.timestamp.isoformat() if m.timestamp else None,
             "Debit_sang": m.Debit_sang,
             "Taux_UF": m.Taux_UF,
             "PA": m.PA,
@@ -1156,9 +1230,18 @@ def real_monitoring(request):
             "PV": m.PV,
             "Volume_UF": m.Volume_UF,
             "Heparine": m.Heparine,
+            # Web JS aliases (dashboard.html / surveillance.html):
+            "Qb": m.Debit_sang,
+            "UF": m.Volume_UF,
+            "status": status_label,
             "alerts": alerts,
         })
-    return JsonResponse({"success": True, "measurements": data})
+    return JsonResponse({
+        "success": True,
+        "measurements": data,
+        "alerts": _live_alerts(),
+        "last_update": timezone.now().isoformat(),
+    })
 
 @api_login_required
 def api_monitoring_live(request):
@@ -1168,26 +1251,21 @@ def api_monitoring_live(request):
     sessions_data = []
     for seance in active_seances:
         last = LiveMeasurement.objects.filter(seance=seance).order_by("-timestamp").first()
-        if last:
-            sessions_data.append({
-                "seance_id": str(seance.id),
-                "patient": str(seance.patient) if seance.patient else None,
-                "machine": seance.machine.machine_id if seance.machine else None,
-                "debit": seance.debit,
-                "Debit_sang": last.Debit_sang,
-                "Taux_UF": last.Taux_UF,
-                "PA": last.PA,
-                "PTM": last.PTM,
-                "PV": last.PV,
-                "Volume_UF": last.Volume_UF,
-                "Heparine": last.Heparine,
-                "timestamp": last.timestamp.isoformat() if last.timestamp else None,
-            })
-    recent_alerts = list(Alerte.objects.filter(status="NEW").order_by("-timestamp")[:20].values("id", "niveau", "message", "status", "timestamp"))
-    for a in recent_alerts:
-        a["id"] = str(a["id"])
-        if a.get("timestamp"):
-            a["timestamp"] = a["timestamp"].isoformat()
+        sessions_data.append({
+            "seance_id": str(seance.id),
+            "patient": str(seance.patient) if seance.patient else None,
+            "machine": seance.machine.machine_id if seance.machine else None,
+            "debit": seance.debit,
+            "Debit_sang": last.Debit_sang if last else None,
+            "Taux_UF": last.Taux_UF if last else None,
+            "PA": last.PA if last else None,
+            "PTM": last.PTM if last else None,
+            "PV": last.PV if last else None,
+            "Volume_UF": last.Volume_UF if last else None,
+            "Heparine": last.Heparine if last else None,
+            "timestamp": last.timestamp.isoformat() if last and last.timestamp else None,
+        })
+    recent_alerts = [a for a in _live_alerts(limit=20) if a["status"] == "NEW"]
     return JsonResponse({
         "success": True,
         "sessions": sessions_data,
@@ -1368,7 +1446,7 @@ def api_doctors(request):
             return _json_err("Cet email existe déjà.")
         if User.objects.filter(username=full_name).exists():
             return _json_err("Ce nom d'utilisateur existe déjà.")
-        password = "".join(random.choices(string.ascii_letters + string.digits, k=8))
+        password = secrets.token_urlsafe(8)[:10]
         role_doctor, _ = Role.objects.get_or_create(name="Docteur")
         user = User.objects.create(
             username=full_name,
@@ -1423,9 +1501,9 @@ def api_doctors(request):
             "fullName": f"Dr.{d.username}",
             "speciality": d.specialite or "Généraliste",
             "roleLabel": d.role.name if d.role else "",
-            "rating": 4.8,
+            "rating": 0,  # aucune donnée de notation en base
             "patientsCount": getattr(d, "patients_count", 0) or 0,
-            "sessionsCount": 0,
+            "sessionsCount": 0,  # aucune relation médecin->séance dans le schéma
             "experienceYears": experience_years,
         })
         doctors.append(payload)
@@ -1479,7 +1557,7 @@ def api_nurses(request):
             return _json_err("Cet email existe déjà.")
         if User.objects.filter(username=nom).exists():
             return _json_err("Ce nom d'utilisateur existe déjà.")
-        password = "".join(random.choices(string.ascii_letters + string.digits, k=8))
+        password = secrets.token_urlsafe(8)[:10]
         role_infirmier, _ = Role.objects.get_or_create(name="Infirmier")
         user = User(
             username=nom,
@@ -1542,10 +1620,10 @@ def api_nurses(request):
         kpis={
             "total_nurses": total_nurses,
             "kpi_active_nurses": kpi_active_nurses,
-            "kpi_total_patients": 0,
-            "kpi_active_sessions": 0,
-            "kpi_scheduled_sessions": 0,
-            "kpi_avg_load": 0,
+            "kpi_total_patients": Patient.objects.count(),
+            "kpi_active_sessions": Seance.objects.filter(status="en cours").count(),
+            "kpi_scheduled_sessions": Seance.objects.filter(status="planifiée").count(),
+            "kpi_avg_load": round(Patient.objects.count() / total_nurses) if total_nurses else 0,
         },
     )
 

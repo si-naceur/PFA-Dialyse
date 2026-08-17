@@ -1,11 +1,6 @@
-import json
-
-from django.http import JsonResponse
 from django.shortcuts import render
-from django.db.models import Q, Avg, Count
+from django.db.models import Q, Avg
 from django.utils import timezone
-from django.views.decorators.csrf import csrf_exempt
-from django.views.decorators.http import require_POST
 
 from datetime import datetime, timedelta
 
@@ -14,46 +9,19 @@ from accounts.decorator import app_login_required, role_required
 
 from machines.models import Machine
 from seances.models import Seance
-from monitoring.models import LiveMeasurement, Alerte
-from monitoring.services import check_thresholds
-from django.http import JsonResponse
 from monitoring.models import Alerte
 
-
-def live_alerts(request):
-
-    alerts = Alerte.objects.filter(
-        status="NEW"
-    ).order_by("-timestamp")[:10]
-
-
-    data = []
-
-    for alert in alerts:
-        data.append({
-            "niveau": alert.niveau,
-            "message": alert.message,
-            "status": alert.status,
-        })
-
-
-    return JsonResponse({
-        "alerts": data
-    })
-
-def ia_conseil(request):
-    return JsonResponse({"message": "Test ia_conseil"})
 
 @app_login_required
 @role_required("Admin", redirect_to="accounts:error")
 def dashboard(request):
     current_user = request.current_user
 
-    # KPIs (comme avant)
+    # KPIs (valeurs réelles calculées depuis la base)
     kpi_doctors = User.objects.filter(role__name__in=["Docteur", "Admin"]).count()
     kpi_nurses = User.objects.filter(role__name__iexact="Infirmier").count()
-    kpi_machines_total = 0
-    kpi_machines_available = 0
+    kpi_machines_total = Machine.objects.count()
+    kpi_machines_available = Machine.objects.filter(status__iexact="Prete").count()
     limit = timezone.now() - timedelta(minutes=5)
     kpi_active_users = User.objects.filter(etat=True).count()
 
@@ -126,202 +94,7 @@ def surveillance_view(request):
           .select_related("patient", "machine")
     )
     return render(request, "surveillance.html", {"current_user": current_user ,"sessions": active_sessions})
-from django.http import JsonResponse
-from django.utils import timezone
 
-
-def live_data(request):
-
-    sessions = []
-
-    active_seances = Seance.objects.filter(
-        status="en cours"
-    ).select_related(
-        "patient",
-        "machine"
-    )
-
-
-    for seance in active_seances:
-
-        last = LiveMeasurement.objects.filter(
-            seance=seance
-        ).order_by(
-            "-timestamp"
-        ).first()
-
-
-        if last:
-
-            sessions.append({
-                "patient": str(seance.patient),
-                "machine": str(seance.machine),
-
-                "Qb": last.Debit_sang,
-                "PA": last.PA,
-                "PTM": last.PTM,
-                "PV": last.PV,
-                "UF": last.Volume_UF,
-
-                "time": last.timestamp.isoformat()
-            })
-
-
-    alerts = []
-
-    last_alerts = Alerte.objects.all().order_by(
-        "-timestamp"
-    )[:20]
-
-
-    for alert in last_alerts:
-
-        alerts.append({
-
-    "id": str(alert.id),
-
-    "niveau": alert.niveau,
-
-    "message": alert.message,
-
-    "status": alert.status,
-
-    "time": alert.timestamp
-
-})
-
-
-    return JsonResponse({
-        "sessions": sessions,
-        "alerts": alerts,
-        "last_update": timezone.now()
-    })
-@csrf_exempt
-def real_monitoring(request):
-    last = (
-        LiveMeasurement.objects
-        .select_related("seance__machine")
-        .order_by("-timestamp")
-        .first()
-    )
-
-    if not last:
-        return JsonResponse({
-            "measurements": []
-        })
-
-    return JsonResponse({
-        "measurements": [
-            {
-                "machine": str(last.seance.machine),
-                "Qb": last.Debit_sang,
-                "PA": last.PA,
-                "PTM": last.PTM,
-                "PV": last.PV,
-                "UF": last.Volume_UF,
-                "time": last.timestamp.isoformat(),
-            }
-        ]
-    })
-def push_measurement(request):
-
-    if request.method != "POST":
-        return JsonResponse(
-            {"error": "POST required"},
-            status=405
-        )
-
-    try:
-        data = json.loads(request.body)
-
-        machine_id = data.get("machine_id")
-
-        machine = Machine.objects.get(
-            machine_id=machine_id
-        )
-
-        seance = Seance.objects.filter(
-            machine=machine,
-            status="en cours"
-        ).first()
-
-        if not seance:
-            return JsonResponse({
-                "error": "No active seance for this machine"
-            }, status=400)
-
-
-        measurement = LiveMeasurement.objects.create(
-            seance=seance,
-            Debit_sang=data.get("Qb"),
-            Taux_UF=data.get("UF_rate"),
-            PA=data.get("PA"),
-            PTM=data.get("PTM"),
-            PV=data.get("PV"),
-            Volume_UF=data.get("UF_volume"),
-            Heparine=data.get("Heparin"),
-        )
-        from monitoring.services import check_thresholds
-        from monitoring.models import Alerte
-        alerts = check_thresholds(measurement)
-
-        for niveau, message in alerts:
-
-            exists = Alerte.objects.filter(
-                reading__seance=seance,
-                niveau=niveau,
-                message=message,
-                timestamp__gte=timezone.now()-timedelta(minutes=5)
-            ).exists()
-
-
-            if not exists:
-                Alerte.objects.create(
-                    reading=measurement,
-                    niveau=niveau,
-                    message=message
-                )
-
-
-        return JsonResponse({
-    "success": True,
-    "id": str(measurement.id),
-    "alerts_created": len(alerts)
-})
-
-
-    except Machine.DoesNotExist:
-        return JsonResponse({
-            "error": "Machine not found"
-        }, status=404)
-
-
-    except Exception as e:
-        return JsonResponse({
-            "error": str(e)
-        }, status=500)
-
-
-from django.shortcuts import get_object_or_404
-from django.views.decorators.http import require_POST
-@require_POST
-def ack_alert(request, alert_id):
-
-    alert = get_object_or_404(
-        Alerte,
-        id=alert_id
-    )
-
-
-    alert.status = "ACK"
-
-    alert.save()
-
-
-    return JsonResponse({
-        "success": True,
-        "message": "Alerte acquittée"
-    })
 @app_login_required
 @role_required("Admin", "Docteur", "Infirmier", redirect_to="accounts:error")
 def alerts_history(request):
@@ -339,6 +112,15 @@ def alerts_history(request):
         .order_by("-timestamp")
     )
 
+    # monitoring.Alerte stores RED/YELLOW while the templates/Flutter expect
+    # HIGH/MEDIUM — normalize so badges and level checks stay consistent.
+    for alert in alerts:
+        niveau = (alert.niveau or "").upper()
+        if niveau == "RED":
+            alert.niveau = "HIGH"
+        elif niveau == "YELLOW":
+            alert.niveau = "MEDIUM"
+
     return render(
         request,
         "alerts_history.html",
@@ -352,21 +134,7 @@ def alerts_history(request):
             "resolved_alerts": alerts.filter(status="RESOLVED").count(),
         },
     )
-@require_POST
-def resolve_alert(request, alert_id):
 
-    alert = get_object_or_404(
-        Alerte,
-        id=alert_id
-    )
-
-    alert.status = "RESOLVED"
-    alert.save()
-
-    return JsonResponse({
-        "success": True,
-        "message": "Alerte résolue"
-    })
 @app_login_required
 @role_required("Admin", "Docteur", "Infirmier", redirect_to="accounts:error")
 def seances_history(request):

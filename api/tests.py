@@ -429,3 +429,94 @@ class Phase1ApiTests(TestCase):
         self.assertEqual(res_res.status_code, 200)
         m_alert.refresh_from_db()
         self.assertEqual(m_alert.status, "RESOLVED")
+
+        # Seance alerts start NEW and are returned with a real status
+        res_list = self.client.get("/api/alerts/")
+        s_alert.refresh_from_db()
+        self.assertEqual(s_alert.status, "NEW")
+        item = next(
+            (a for a in res_list.json()["data"] if a["id"] == s_alert.id), None
+        )
+        self.assertIsNotNone(item)
+        self.assertEqual(item["status"], "NEW")
+
+        # Ack seance alert — must persist
+        res_s_ack = self.client.post(f"/api/alerts/{s_alert.id}/ack/")
+        self.assertEqual(res_s_ack.status_code, 200)
+        s_alert.refresh_from_db()
+        self.assertEqual(s_alert.status, "ACK")
+        res_list = self.client.get("/api/alerts/")
+        item = next(
+            (a for a in res_list.json()["data"] if a["id"] == s_alert.id), None
+        )
+        self.assertEqual(item["status"], "ACK")
+
+        # Resolve seance alert — must persist
+        res_s_res = self.client.post(f"/api/alerts/{s_alert.id}/resolve/")
+        self.assertEqual(res_s_res.status_code, 200)
+        s_alert.refresh_from_db()
+        self.assertEqual(s_alert.status, "RESOLVED")
+        res_list = self.client.get("/api/alerts/")
+        item = next(
+            (a for a in res_list.json()["data"] if a["id"] == s_alert.id), None
+        )
+        self.assertEqual(item["status"], "RESOLVED")
+
+        # Status filter applies to both sources
+        res_new = self.client.get("/api/alerts/?status=NEW")
+        ids_new = {a["id"] for a in res_new.json()["data"]}
+        self.assertNotIn(s_alert.id, ids_new)
+        res_resolved = self.client.get("/api/alerts/?status=RESOLVED")
+        ids_resolved = {a["id"] for a in res_resolved.json()["data"]}
+        self.assertIn(s_alert.id, ids_resolved)
+
+    def test_dashboard_kpis_are_real_values(self):
+        self._login(self.doctor_user)
+        res = self.client.get("/api/dashboard/")
+        self.assertEqual(res.status_code, 200)
+        kpis = res.json()["kpis"]
+        # Machine KPIs come from the DB, not hardcoded zeros.
+        self.assertEqual(kpis["total_machines"], Machine.objects.count())
+        self.assertEqual(
+            kpis["available_machines"],
+            Machine.objects.filter(status="Prete").count(),
+        )
+        self.assertEqual(kpis["patients_count"], Patient.objects.count())
+        self.assertEqual(
+            kpis["active_alerts"],
+            Alerte.objects.filter(status="NEW").count()
+            + SeanceAlert.objects.filter(status="NEW").count(),
+        )
+
+    def test_nurses_kpis_are_real_values(self):
+        self._login(self.doctor_user)
+        self.nurse_user.etat = True
+        self.nurse_user.save()
+        res = self.client.get("/api/nurses/")
+        self.assertEqual(res.status_code, 200)
+        kpis = res.json()["kpis"]
+        self.assertEqual(kpis["kpi_total_patients"], Patient.objects.count())
+        self.assertEqual(
+            kpis["kpi_active_sessions"],
+            Seance.objects.filter(status="en cours").count(),
+        )
+        self.assertEqual(
+            kpis["kpi_scheduled_sessions"],
+            Seance.objects.filter(status="planifiée").count(),
+        )
+        self.assertEqual(kpis["kpi_active_nurses"], 1)
+
+    def test_doctors_do_not_fabricate_rating(self):
+        admin_role = Role.objects.create(name="Admin")
+        admin_user = User.objects.create(
+            username="admin_kpi",
+            password="password123",
+            role=admin_role,
+            email="admin_kpi@test.com",
+        )
+        self._login(admin_user)
+        res = self.client.get("/api/doctors/")
+        self.assertEqual(res.status_code, 200)
+        for doctor in res.json()["data"]:
+            # No rating data exists in the schema — must not be a fake 4.8.
+            self.assertEqual(doctor["rating"], 0)

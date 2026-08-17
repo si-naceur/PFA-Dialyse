@@ -6,6 +6,7 @@ from django.http import JsonResponse
 from django.views.decorators.http import require_http_methods
 from django.shortcuts import get_object_or_404
 from django.db.models import Q
+from django.contrib import messages
 from .models import Seance, PostSessionMeasurements,PreSessionMeasurements
 from .rapport import generate_rapport
 from machines.models import Machine
@@ -231,6 +232,16 @@ def pre_session_page(request, session_id):
         form = PreSessionLaunchForm(request.POST)
         if form.is_valid():
             cd = form.cleaned_data
+
+            if seance.machine and Seance.objects.filter(
+                machine=seance.machine,
+                status="en cours"
+            ).exclude(id=seance.id).exists():
+                messages.error(
+                    request,
+                    "Machine déjà occupée par une séance en cours"
+                )
+                return redirect("seances:planning")
 
             obj.weight         = cd["weight"]
             obj.blood_pressure = cd["blood_pressure"]

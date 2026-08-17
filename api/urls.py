@@ -18,10 +18,10 @@ urlpatterns = [
 
     # Sessions / Seances
     path("sessions/", views.api_sessions, name="api_sessions"),
-    path("sessions/<uuid:session_id>/", views.api_session_detail, name="api_session_detail"),
-    path("sessions/<uuid:session_id>/start/", views.api_session_start, name="api_session_start"),
-    path("sessions/<uuid:session_id>/end/", views.api_session_end, name="api_session_end"),
-    path("sessions/<uuid:session_id>/cancel/", views.api_session_cancel, name="api_session_cancel"),
+    path("sessions/<str:session_id>/", views.api_session_detail, name="api_session_detail"),
+    path("sessions/<str:session_id>/start/", views.api_session_start, name="api_session_start"),
+    path("sessions/<str:session_id>/end/", views.api_session_end, name="api_session_end"),
+    path("sessions/<str:session_id>/cancel/", views.api_session_cancel, name="api_session_cancel"),
 
     # Alerts
     path("alerts/", views.api_alerts, name="api_alerts"),

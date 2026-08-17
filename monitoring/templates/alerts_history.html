@@ -162,10 +162,41 @@
 </div>
 <script>
 
+function ackAlert(id){
+
+    fetch(
+        `/api/alerts/${id}/ack/`,
+        {
+            method: "POST",
+
+            headers:{
+                "X-CSRFToken": getCookie("csrftoken")
+            }
+        }
+    )
+
+    .then(response => response.json())
+
+    .then(data => {
+
+        console.log("Alert ACK:", data);
+
+        location.reload();
+
+    })
+
+    .catch(error => {
+
+        console.log(error);
+
+    });
+
+}
+
 function resolveAlert(id){
 
     fetch(
-        `/monitoring/alert/${id}/resolve/`,
+        `/api/alerts/${id}/resolve/`,
         {
             method: "POST",
 

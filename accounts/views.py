@@ -2,13 +2,14 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.db.models import Q
 from .models import User , Role , Profile, PasswordResetRequest
+from patients.models import Patient
+from seances.models import Seance
 from .decorator import app_login_required, role_required 
 from django.core.files.base import ContentFile
 from django.contrib import messages
 import base64
 import uuid
-import random
-import string
+import secrets
 from .reset_utils import make_reset_token , read_reset_token
 from django.contrib.auth.hashers import make_password, check_password
 from django.conf import settings
@@ -18,8 +19,6 @@ from django.shortcuts import render
 from accounts.models import UserActivity
 
 # Create your views here.
-# def home(request):
-# return render(request, 'home.html')
 
 def dashboard(request):
 
@@ -208,10 +207,12 @@ def nurses_list(request):
             "status_label": etat,
             "status_color": "bg-green-100 text-green-800" if n.etat else "bg-red-100 text-red-800",
         })
-    kpi_total_patients = sum(x["patientsCount"] for x in nurses)
-    kpi_active_sessions = sum(x["activeSessions"] for x in nurses)
-    kpi_scheduled_sessions = sum(x["scheduledSessions"] for x in nurses)
-    kpi_avg_load = round(kpi_total_patients / len(nurses)) if nurses else 0
+    # KPIs globaux (valeurs réelles calculées depuis la base)
+    kpi_total_patients = Patient.objects.count()
+    kpi_active_sessions = Seance.objects.filter(status="en cours").count()
+    kpi_scheduled_sessions = Seance.objects.filter(status="planifiée").count()
+    nurse_count = nurses_qs.count()
+    kpi_avg_load = round(kpi_total_patients / nurse_count) if nurse_count else 0
     context = {
         "nurses": nurses,
         "kpi_total_patients": kpi_total_patients,
@@ -289,9 +290,9 @@ def docteurs_list(request):
             "fullName": f"Dr.{d.username}",
             "speciality": speciality,
             "roleLabel": d.role.name,
-            "rating": 4.8,
+            "rating": 0,  # aucune donnée de notation en base
             "patientsCount": getattr(d, "patients_count", 0),
-            "sessionsCount": 0,
+            "sessionsCount": 0,  # aucune relation médecin->séance dans le schéma
             "experienceYears": experience_years,
             "email": d.email,
             "phone": d.phone_number,
@@ -325,7 +326,7 @@ def ajout_infirmier(request):
         messages.error(request, "Nom et email sont obligatoires.")
         return redirect("accounts:nurses")
     # Mot de passe automatique (8 caractères)
-    password = ''.join(random.choices(string.ascii_letters + string.digits, k=8))
+    password = secrets.token_urlsafe(8)[:10]
 
     if User.objects.filter(email=email).exists():
         messages.error(request, "Cet email existe déjà.")
@@ -365,7 +366,7 @@ def add_doctor(request):
             return redirect("accounts:docteurs")
 
         # Mot de passe automatique (8 caractères)
-        password = ''.join(random.choices(string.ascii_letters + string.digits, k=8))
+        password = secrets.token_urlsafe(8)[:10]
 
         # Récupérer le rôle Docteur
         role_doctor, _ = Role.objects.get_or_create(name="Docteur")
