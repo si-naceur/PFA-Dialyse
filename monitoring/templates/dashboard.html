@@ -1071,14 +1071,117 @@ function refreshDashboard(){
 }
 
 
+function updateMonitoring(measurements){
+
+
+    console.log("Measurements:", measurements);
+
+
+    if(measurements && measurements.length > 0){
+
+
+        let m = measurements[0];
+
+
+        document.getElementById("qb").innerHTML = m.Qb ?? "--";
+        document.getElementById("pa").innerHTML = m.PA ?? "--";
+        document.getElementById("ptm").innerHTML = m.PTM ?? "--";
+        document.getElementById("pv").innerHTML = m.PV ?? "--";
+        document.getElementById("uf").innerHTML = m.UF ?? "--";
+
+        document.getElementById("machine").innerHTML = m.machine ?? "--";
+
+
+        const statusElement = document.getElementById("machine-status");
+
+
+        statusElement.innerHTML = m.status ?? "--";
+
+        statusElement.className = "font-semibold";
+
+
+        if (m.status === "NORMAL") {
+            statusElement.classList.add("text-green-600");
+        }
+        else if (m.status === "WARNING") {
+            statusElement.classList.add("text-yellow-600");
+        }
+        else if (m.status === "CRITICAL") {
+            statusElement.classList.add("text-red-600");
+        }
+
+    }
+
+}
+
+
+
+function updateAlerts(alerts){
+
+
+    console.log("Alerts:", alerts);
+
+
+    const container = document.getElementById("alerts-container");
+
+
+    container.innerHTML = "";
+
+
+    if(!alerts || alerts.length === 0){
+
+        container.innerHTML =
+        "<p class='text-gray-500'>Aucune alerte.</p>";
+
+        return;
+
+    }
+
+
+
+    alerts.forEach(alert => {
+
+
+        let color = "bg-yellow-100 text-yellow-800";
+
+
+        if(alert.niveau === "RED"){
+            color = "bg-red-100 text-red-800";
+        }
+
+
+
+        container.innerHTML += `
+
+        <div class="border rounded-lg p-3 mb-2">
+
+            <span class="${color} px-2 py-1 rounded">
+                ${alert.niveau}
+            </span>
+
+            <p class="mt-2 font-semibold">
+                ${alert.machine}
+            </p>
+
+            <p>
+                ${alert.message}
+            </p>
+
+        </div>
+
+        `;
+
+
+    });
+
+
+}
+
+
+
 refreshDashboard();
 
 setInterval(refreshDashboard, 3000);
-
-
-
-
-
-
 </script>
+
 {% endblock %}
