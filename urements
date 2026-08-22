@@ -1,0 +1,725 @@
+[1mdiff --cc api/views.py[m
+[1mindex 5fa313a,2eef2dc..0000000[m
+[1m--- a/api/views.py[m
+[1m+++ b/api/views.py[m
+[36m@@@ -1199,633 -123,85 +1199,719 @@@[m [mdef _live_alerts(limit=50)[m
+  [m
+  [m
+  def real_monitoring(request):[m
+[32m++<<<<<<< Updated upstream[m
+[32m +    measurements = LiveMeasurement.objects.select_related("seance__machine", "seance__patient").order_by("-timestamp")[:20][m
+[32m++=======[m
+[32m+ [m
+[32m+     measurements = ([m
+[32m+         LiveMeasurement.objects[m
+[32m+         .select_related("seance__machine")[m
+[32m+         .order_by("-timestamp")[:20][m
+[32m+     )[m
+[32m+ [m
+[32m++>>>>>>> Stashed changes[m
+      data = [][m
+[31m -[m
+      for m in measurements:[m
+[32m++<<<<<<< Updated upstream[m
+[32m +        alerts = list(m.alertes.values("id", "niveau", "message", "status", "timestamp"))[m
+[32m +        for a in alerts:[m
+[32m +            a["id"] = str(a["id"])[m
+[32m +            a["niveau"] = _normalize_level(a["niveau"])[m
+[32m +            if a.get("timestamp"):[m
+[32m +                a["timestamp"] = a["timestamp"].isoformat()[m
+[32m +        levels = {a["niveau"] for a in alerts if a.get("status") == "NEW"}[m
+[32m +        if "HIGH" in levels:[m
+[32m +            status_label = "CRITICAL"[m
+[32m +        elif "MEDIUM" in levels:[m
+[32m +            status_label = "WARNING"[m
+[32m +        else:[m
+[32m +            status_label = "NORMAL"[m
+[32m +        data.append({[m
+[32m +            "id": str(m.id),[m
+[32m +            "machine": str(m.seance.machine) if m.seance.machine else None,[m
+[32m +            "machine_id": m.seance.machine.machine_id if m.seance.machine else None,[m
+[32m +            "patient": str(m.seance.patient) if m.seance.patient else None,[m
+[32m +            "seance_id": str(m.seance.id),[m
+[32m +            "timestamp": m.timestamp.isoformat() if m.timestamp else None,[m
+[32m +            "time": m.timestamp.isoformat() if m.timestamp else None,[m
+[32m +            "Debit_sang": m.Debit_sang,[m
+[32m +            "Taux_UF": m.Taux_UF,[m
+[32m +            "PA": m.PA,[m
+[32m +            "PTM": m.PTM,[m
+[32m +            "PV": m.PV,[m
+[32m +            "Volume_UF": m.Volume_UF,[m
+[32m +            "Heparine": m.Heparine,[m
+[32m +            # Web JS aliases (dashboard.html / surveillance.html):[m
+[32m +            "Qb": m.Debit_sang,[m
+[32m +            "UF": m.Volume_UF,[m
+[32m +            "status": status_label,[m
+[32m +            "alerts": alerts,[m
+[32m++=======[m
+[32m+ [m
+[32m+         critical = False[m
+[32m+         warning = False[m
+[32m+ [m
+[32m+         # Critical thresholds[m
+[32m+         if m.PA is not None and (m.PA > 180 or m.PA < 80):[m
+[32m+             critical = True[m
+[32m+ [m
+[32m+         if m.Debit_sang is not None and m.Debit_sang < 200:[m
+[32m+             critical = True[m
+[32m+ [m
+[32m+         # Warning thresholds[m
+[32m+         if m.PV is not None and m.PV > 250:[m
+[32m+             warning = True[m
+[32m+ [m
+[32m+         if m.PTM is not None and m.PTM > 100:[m
+[32m+             warning = True[m
+[32m+ [m
+[32m+         # Priority: CRITICAL > WARNING > NORMAL[m
+[32m+         if critical:[m
+[32m+             status = "CRITICAL"[m
+[32m+         elif warning:[m
+[32m+             status = "WARNING"[m
+[32m+         else:[m
+[32m+             status = "NORMAL"[m
+[32m+ [m
+[32m+         data.append({[m
+[32m+             "machine": str(m.seance.machine),[m
+[32m+             "Qb": m.Debit_sang,[m
+[32m+             "PA": m.PA,[m
+[32m+             "PTM": m.PTM,[m
+[32m+             "PV": m.PV,[m
+[32m+             "UF": m.Volume_UF,[m
+[32m+             "status": status,[m
+[32m+             "time": m.timestamp.isoformat(),[m
+[32m+         })[m
+[32m+ [m
+[32m+     # Alerts[m
+[32m+     from monitoring.models import Alerte[m
+[32m+ [m
+[32m+     alerts = ([m
+[32m+         Alerte.objects[m
+[32m+         .select_related([m
+[32m+             "reading",[m
+[32m+             "reading__seance",[m
+[32m+             "reading__seance__machine"[m
+[32m+         )[m
+[32m+         .order_by("-timestamp")[:20][m
+[32m+     )[m
+[32m+ [m
+[32m+     alerts_data = [][m
+[32m+ [m
+[32m+     for alert in alerts:[m
+[32m+ [m
+[32m+         alerts_data.append({[m
+[32m+             "machine": ([m
+[32m+                 str(alert.reading.seance.machine)[m
+[32m+                 if alert.reading[m
+[32m+                 and alert.reading.seance[m
+[32m+                 and alert.reading.seance.machine[m
+[32m+                 else ""[m
+[32m+             ),[m
+[32m+             "message": alert.message,[m
+[32m+             "niveau": alert.niveau,[m
+[32m+             "time": alert.timestamp.isoformat(),[m
+[32m++>>>>>>> Stashed changes[m
+[32m +        })[m
+[32m +    return JsonResponse({[m
+[32m +        "success": True,[m
+[32m +        "measurements": data,[m
+[32m +        "alerts": _live_alerts(),[m
+[32m +        "last_update": timezone.now().isoformat(),[m
+[32m +    })[m
+[32m +[m
+[32m++<<<<<<< Updated upstream[m
+[32m +@api_login_required[m
+[32m +def api_monitoring_live(request):[m
+[32m +    if request.method != "GET":[m
+[32m +        return _json_err("GET required", status=405)[m
+[32m +    active_seances = Seance.objects.filter(status="en cours").select_related("patient", "machine")[m
+[32m +    sessions_data = [][m
+[32m +    for seance in active_seances:[m
+[32m +        last = LiveMeasurement.objects.filter(seance=seance).order_by("-timestamp").first()[m
+[32m +        sessions_data.append({[m
+[32m +            "seance_id": str(seance.id),[m
+[32m +            "patient": str(seance.patient) if seance.patient else None,[m
+[32m +            "machine": seance.machine.machine_id if seance.machine else None,[m
+[32m +            "debit": seance.debit,[m
+[32m +            "Debit_sang": last.Debit_sang if last else None,[m
+[32m +            "Taux_UF": last.Taux_UF if last else None,[m
+[32m +            "PA": last.PA if last else None,[m
+[32m +            "PTM": last.PTM if last else None,[m
+[32m +            "PV": last.PV if last else None,[m
+[32m +            "Volume_UF": last.Volume_UF if last else None,[m
+[32m +            "Heparine": last.Heparine if last else None,[m
+[32m +            "timestamp": last.timestamp.isoformat() if last and last.timestamp else None,[m
+          })[m
+[32m +    recent_alerts = [a for a in _live_alerts(limit=20) if a["status"] == "NEW"][m
+[32m +    return JsonResponse({[m
+[32m +        "success": True,[m
+[32m +        "sessions": sessions_data,[m
+[32m +        "alerts": recent_alerts,[m
+[32m +        "last_update": timezone.now().isoformat(),[m
+[32m +    })[m
+[32m +[m
+[32m +def _measurement_payload(measurement):[m
+[32m +    """Maps a LiveMeasurement to the Qb/PA/PTM/PV/UF boxes + machine/status[m
+[32m +    block used by the monitoring dashboard (monitoring/templates/dashboard.html)."""[m
+[32m +    alert_levels = {[m
+[32m +        (a.niveau or "").upper()[m
+[32m +        for a in measurement.alertes.filter(status="NEW")[m
+[32m +    }[m
+[32m +    if alert_levels & {"HIGH", "RED"}:[m
+[32m +        status_label = "CRITICAL"[m
+[32m +    elif alert_levels & {"MEDIUM", "YELLOW"}:[m
+[32m +        status_label = "WARNING"[m
+[32m +    else:[m
+[32m +        status_label = "NORMAL"[m
+[32m +    return {[m
+[32m +        "machine": str(measurement.seance.machine) if measurement.seance and measurement.seance.machine else None,[m
+[32m +        "machine_id": measurement.seance.machine.machine_id if measurement.seance and measurement.seance.machine else None,[m
+[32m +        "patient": str(measurement.seance.patient) if measurement.seance and measurement.seance.patient else None,[m
+[32m +        "Qb": measurement.Debit_sang,[m
+[32m +        "PA": measurement.PA,[m
+[32m +        "PTM": measurement.PTM,[m
+[32m +        "PV": measurement.PV,[m
+[32m +        "UF": measurement.Volume_UF,[m
+[32m +        "status": status_label,[m
+[32m +        "time": measurement.timestamp.isoformat() if measurement.timestamp else None,[m
+[32m +    }[m
+[32m +[m
+[32m +[m
+[32m +@api_login_required[m
+[32m +def api_monitoring(request):[m
+[32m +    """Mobile counterpart of the /monitoring/ dashboard page.[m
+[32m +[m
+[32m +    Reproduces `monitoring/views.py dashboard()`: the KPI cards, the live[m
+[32m +    dialysis measurement block, the real-time alerts and the login/logout[m
+[32m +    history table (with the same day/q/role/sort/status filters).[m
+[32m +    """[m
+[32m +    if request.method != "GET":[m
+[32m +        return _json_err("GET required", status=405)[m
+[32m +[m
+[32m +    # KPIs — identical querysets to the web dashboard.[m
+[32m +    kpis = {[m
+[32m +        "doctors": User.objects.filter(role__name__in=["Docteur", "Admin"]).count(),[m
+[32m +        "nurses": User.objects.filter(role__name__iexact="Infirmier").count(),[m
+[32m +        "active_users": User.objects.filter(etat=True).count(),[m
+[32m +        "machines_available": Machine.objects.filter(status="Prete").count(),[m
+[32m +        "machines_total": Machine.objects.count(),[m
+[32m +    }[m
+[32m +[m
+[32m +    # Login/logout history — identical filters/sorting to the web dashboard.[m
+[32m +    selected_day = (request.GET.get("day") or "").strip()[m
+[32m +    q = (request.GET.get("q") or "").strip()[m
+[32m +    role_filter = (request.GET.get("role") or "").strip()[m
+[32m +    sort = (request.GET.get("sort") or "-login_at").strip()[m
+[32m +    status = (request.GET.get("status") or "").strip()[m
+[32m +[m
+[32m +    allowed_sorts = {"login_at", "-login_at", "username", "-username"}[m
+[32m +    if sort not in allowed_sorts:[m
+[32m +        sort = "-login_at"[m
+[32m +[m
+[32m +    qs = UserActivity.objects.select_related("user", "user__role")[m
+[32m +    if selected_day:[m
+[32m +        qs = qs.filter(login_at__date=selected_day)[m
+[32m +    if q:[m
+[32m +        qs = qs.filter([m
+[32m +            Q(user__username__icontains=q) |[m
+[32m +            Q(user__email__icontains=q)[m
+[32m +        )[m
+[32m +    if role_filter in ("Docteur", "Infirmier", "Admin"):[m
+[32m +        qs = qs.filter(user__role__name__iexact=role_filter)[m
+[32m +    if sort in ("username", "-username"):[m
+[32m +        prefix = "-" if sort.startswith("-") else ""[m
+[32m +        qs = qs.order_by(f"{prefix}user__username", "-login_at")[m
+[32m +    else:[m
+[32m +        qs = qs.order_by(sort)[m
+[32m +    if status == "ongoing":[m
+[32m +        qs = qs.filter(logout_at__isnull=True)[m
+[32m +[m
+[32m +    activity = [[m
+[32m +        {[m
+[32m +            "username": a.user.username,[m
+[32m +            "email": a.user.email or "",[m
+[32m +            "role": a.user.role.name if a.user.role else "",[m
+[32m +            "login_at": a.login_at.isoformat() if a.login_at else None,[m
+[32m +            "logout_at": a.logout_at.isoformat() if a.logout_at else None,[m
+[32m +        }[m
+[32m +        for a in qs[:50][m
+[32m +    ][m
+[32m +[m
+[32m +    # Live measurement — latest reading drives the Qb/PA/PTM/PV/UF boxes.[m
+[32m +    last = ([m
+[32m +        LiveMeasurement.objects[m
+[32m +        .select_related("seance__machine", "seance__patient")[m
+[32m +        .order_by("-timestamp")[m
+[32m +        .first()[m
+[32m +    )[m
+[32m +    measurement = _measurement_payload(last) if last else None[m
+[32m +[m
+[32m +    recent_alerts = ([m
+[32m +        Alerte.objects[m
+[32m +        .select_related("reading__seance__machine")[m
+[32m +        .order_by("-timestamp")[:20][m
+[32m +    )[m
+[32m +    alerts = [[m
+[32m +        {[m
+[32m +            "id": str(a.id),[m
+[32m +            "niveau": a.niveau,[m
+[32m +            "message": a.message,[m
+[32m +            "status": a.status,[m
+[32m +            "machine": a.reading.seance.machine.machine_id[m
+[32m +            if a.reading and a.reading.seance and a.reading.seance.machine[m
+[32m +            else None,[m
+[32m +            "time": a.timestamp.isoformat() if a.timestamp else None,[m
+[32m +        }[m
+[32m +        for a in recent_alerts[m
+[32m +    ][m
+[32m +[m
+[32m +    return JsonResponse({[m
+[32m +        "success": True,[m
+[32m +        "kpis": kpis,[m
+[32m +        "measurement": measurement,[m
+[32m +        "alerts": alerts,[m
+[32m +        "activity": activity,[m
+[32m +        "last_update": timezone.now().isoformat(),[m
+[32m +    })[m
+[32m +[m
+[32m +def _staff_profile_payload(user, profile=None):[m
+[32m +    if profile is None:[m
+[32m +        profile = Profile.objects.filter(user=user).first()[m
+[32m +    join_date = user.date_inscription[m
+[32m +    return {[m
+[32m +        "id": user.id,[m
+[32m +        "username": user.username,[m
+[32m +        "email": user.email or "",[m
+[32m +        "phone": user.phone_number or "",[m
+[32m +        "address": user.adress or "",[m
+[32m +        "role": user.role.name if user.role else "",[m
+[32m +        "specialite": user.specialite or "",[m
+[32m +        "etat": bool(user.etat),[m
+[32m +        "status_label": "Actif" if user.etat else "Inactif",[m
+[32m +        "date_inscription": str(join_date) if join_date else None,[m
+[32m +        "member_since": join_date.strftime("%B %Y") if join_date else "",[m
+[32m +        "seniority_label": _seniority_label(join_date),[m
+[32m +        "bio": profile.bio if profile else "",[m
+[32m +        "formation": profile.formation if profile else "",[m
+[32m +        "experience": profile.experience if profile else "",[m
+[32m +        "first_login": user.first_login,[m
+[32m +        "photo_url": ([m
+[32m +            profile.image.url if profile and profile.image else ""[m
+[32m +        ),[m
+[32m +    }[m
+[32m +[m
+  [m
+[32m +@csrf_exempt[m
+[32m +@api_login_required[m
+[32m +def api_doctors(request):[m
+[32m +    """Mobile counterpart of accounts.views.docteurs_list + add_doctor."""[m
+[32m +    current_user = request.current_user[m
+[32m +    if request.method == "POST":[m
+[32m +        if not _has_role(current_user, "Admin"):[m
+[32m +            return _json_err("Insufficient permissions — Admin only", status=403)[m
+[32m +        try:[m
+[32m +            body = json.loads(request.body or "{}")[m
+[32m +        except json.JSONDecodeError:[m
+[32m +            return _json_err("Invalid JSON")[m
+[32m +        full_name = str(body.get("fullName") or body.get("username") or "").strip()[m
+[32m +        email = str(body.get("email") or "").strip().lower()[m
+[32m +        speciality = body.get("speciality") or body.get("specialite") or ""[m
+[32m +        phone = body.get("phone") or body.get("phone_number") or ""[m
+[32m +        if not full_name or not email:[m
+[32m +            return _json_err("Nom et email sont obligatoires.")[m
+[32m +        if User.objects.filter(email=email).exists():[m
+[32m +            return _json_err("Cet email existe déjà.")[m
+[32m +        if User.objects.filter(username=full_name).exists():[m
+[32m +            return _json_err("Ce nom d'utilisateur existe déjà.")[m
+[32m +        password = secrets.token_urlsafe(8)[:10][m
+[32m +        role_doctor, _ = Role.objects.get_or_create(name="Docteur")[m
+[32m +        user = User.objects.create([m
+[32m +            username=full_name,[m
+[32m +            email=email,[m
+[32m +            specialite=speciality,[m
+[32m +            phone_number=phone,[m
+[32m +            role=role_doctor,[m
+[32m +            etat=False,[m
+[32m +            password=make_password(password),[m
+[32m +        )[m
+[32m +        return _json_ok([m
+[32m +            _staff_profile_payload(user),[m
+[32m +            generated_password=password,[m
+[32m +            message=f"Docteur ajouté avec succès ! Mot de passe : {password}",[m
+[32m +        )[m
+[32m +[m
+[32m +    if request.method != "GET":[m
+[32m +        return _json_err("GET or POST required", status=405)[m
+[32m +    if not _has_role(current_user, "Admin"):[m
+[32m +        return _json_err("Insufficient permissions — Admin only", status=403)[m
+[32m +[m
+[32m +    search = request.GET.get("search", "").strip()[m
+[32m +    role = request.GET.get("role", "").strip()[m
+[32m +    status = request.GET.get("status", "").strip()[m
+[32m +[m
+[32m +    doctors_qs = User.objects.select_related("role").filter([m
+[32m +        role__name__in=["Docteur", "Admin"][m
+[32m +    )[m
+[32m +    total_doctors = doctors_qs.count()[m
+[32m +    isadmin_count = doctors_qs.filter(role__name="Admin").count()[m
+[32m +    is_actif_count = doctors_qs.filter(etat=True).count()[m
+[32m +[m
+[32m +    if search:[m
+[32m +        doctors_qs = doctors_qs.filter(username__icontains=search)[m
+[32m +    if role == "admin":[m
+[32m +        doctors_qs = doctors_qs.filter(role__name="Admin")[m
+[32m +    elif role == "doctor":[m
+[32m +        doctors_qs = doctors_qs.filter(role__name="Docteur")[m
+[32m +    if status == "active":[m
+[32m +        doctors_qs = doctors_qs.filter(etat=True)[m
+[32m +    elif status == "inactive":[m
+[32m +        doctors_qs = doctors_qs.filter(etat=False)[m
+[32m +[m
+[32m +    doctors_qs = doctors_qs.order_by("username")[m
+[32m +    profile_qs = Profile.objects.all()[m
+[32m +    doctors = [][m
+[32m +    for d in doctors_qs:[m
+[32m +        profile = profile_qs.filter(user=d).first()[m
+[32m +        experience_years = profile.experience if profile and profile.experience else 0[m
+[32m +        payload = _staff_profile_payload(d, profile)[m
+[32m +        payload.update({[m
+[32m +            "fullName": f"Dr.{d.username}",[m
+[32m +            "speciality": d.specialite or "Généraliste",[m
+[32m +            "roleLabel": d.role.name if d.role else "",[m
+[32m +            "rating": 0,  # aucune donnée de notation en base[m
+[32m +            "patientsCount": getattr(d, "patients_count", 0) or 0,[m
+[32m +            "sessionsCount": 0,  # aucune relation médecin->séance dans le schéma[m
+[32m +            "experienceYears": experience_years,[m
+[32m +        })[m
+[32m +        doctors.append(payload)[m
+[32m +    return _json_ok([m
+[32m +        doctors,[m
+[32m +        count=len(doctors),[m
+[32m +        kpis={[m
+[32m +            "total_doctors": total_doctors,[m
+[32m +            "isadmin_count": isadmin_count,[m
+[32m +            "isActif_count": is_actif_count,[m
+[32m +        },[m
+[32m +    )[m
+[32m +[m
+[32m +[m
+[32m +@api_login_required[m
+[32m +def api_doctor_detail(request, doctor_id):[m
+[32m +    current_user = request.current_user[m
+[32m +    if not _has_role(current_user, "Admin"):[m
+[32m +        return _json_err("Insufficient permissions — Admin only", status=403)[m
+[32m +    if request.method != "GET":[m
+[32m +        return _json_err("GET required", status=405)[m
+[32m +    doctor = ([m
+[32m +        User.objects.filter(Q(role__name="Docteur") | Q(role__name="Admin"), id=doctor_id)[m
+[32m +        .select_related("role")[m
+[32m +        .first()[m
+[32m +    )[m
+[32m +    if not doctor:[m
+[32m +        return _json_err("Médecin introuvable.", status=404)[m
+[32m +    profile = Profile.objects.filter(user=doctor).first()[m
+[32m +    return _json_ok(_staff_profile_payload(doctor, profile))[m
+[32m +[m
+[32m +[m
+[32m +@csrf_exempt[m
+[32m +@api_login_required[m
+[32m +def api_nurses(request):[m
+[32m +    """Mobile counterpart of accounts.views.nurses_list + ajout_infirmier."""[m
+[32m +    current_user = request.current_user[m
+[32m +    if request.method == "POST":[m
+[32m +        if not _has_role(current_user, "Admin", "Docteur"):[m
+[32m +            return _json_err("Insufficient permissions", status=403)[m
+[32m +        try:[m
+[32m +            body = json.loads(request.body or "{}")[m
+[32m +        except json.JSONDecodeError:[m
+[32m +            return _json_err("Invalid JSON")[m
+[32m +        nom = str(body.get("nom") or body.get("username") or "").strip()[m
+[32m +        email = str(body.get("email") or "").strip().lower()[m
+[32m +        telephone = str(body.get("telephone") or body.get("phone") or "").strip()[m
+[32m +        if not nom or not email:[m
+[32m +            return _json_err("Nom et email sont obligatoires.")[m
+[32m +        if User.objects.filter(email=email).exists():[m
+[32m +            return _json_err("Cet email existe déjà.")[m
+[32m +        if User.objects.filter(username=nom).exists():[m
+[32m +            return _json_err("Ce nom d'utilisateur existe déjà.")[m
+[32m +        password = secrets.token_urlsafe(8)[:10][m
+[32m +        role_infirmier, _ = Role.objects.get_or_create(name="Infirmier")[m
+[32m +        user = User([m
+[32m +            username=nom,[m
+[32m +            email=email,[m
+[32m +            phone_number=telephone,[m
+[32m +            etat=False,[m
+[32m +            password=make_password(password),[m
+[32m +            role=role_infirmier,[m
+[32m +        )[m
+[32m +        user.save()[m
+[32m +        return _json_ok([m
+[32m +            _staff_profile_payload(user),[m
+[32m +            generated_password=password,[m
+[32m +            message=f"Infirmier ajouté. Mot de passe : {password}",[m
+[32m +        )[m
+[32m +[m
+[32m +    if request.method != "GET":[m
+[32m +        return _json_err("GET or POST required", status=405)[m
+[32m +    if not _has_role(current_user, "Admin", "Docteur"):[m
+[32m +        return _json_err("Insufficient permissions", status=403)[m
+[32m +[m
+[32m +    search_query = request.GET.get("search", "").strip()[m
+[32m +    status_filter = request.GET.get("status", "").strip().lower()[m
+[32m +[m
+[32m +    nurses_qs = ([m
+[32m +        User.objects.select_related("role")[m
+[32m +        .filter(role__name__iexact="Infirmier")[m
+[32m +        .order_by("username")[m
+[32m +    )[m
+[32m +    total_nurses = nurses_qs.count()[m
+[32m +    kpi_active_nurses = nurses_qs.filter(etat=True).count()[m
+[32m +    if search_query:[m
+[32m +        nurses_qs = nurses_qs.filter([m
+[32m +            Q(username__icontains=search_query)[m
+[32m +            | Q(email__icontains=search_query)[m
+[32m +            | Q(phone_number__icontains=search_query)[m
+[32m +        )[m
+[32m +    if status_filter == "active":[m
+[32m +        nurses_qs = nurses_qs.filter(etat=True)[m
+[32m +    elif status_filter == "inactive":[m
+[32m +        nurses_qs = nurses_qs.filter(etat=False)[m
+[32m +[m
+[32m +    nurses = [][m
+[32m +    for n in nurses_qs:[m
+[32m +        assigned_mgr = getattr(n, "assigned_doctors", None)[m
+[32m +        doctor_names = [d.username for d in assigned_mgr.all()] if assigned_mgr else [][m
+[32m +        payload = _staff_profile_payload(n)[m
+[32m +        payload.update({[m
+[32m +            "firstName": n.username,[m
+[32m +            "lastName": "",[m
+[32m +            "assignedDoctorsText": ", ".join(doctor_names) if doctor_names else "Aucun",[m
+[32m +            "patientsCount": 0,[m
+[32m +            "activeSessions": 0,[m
+[32m +            "scheduledSessions": 0,[m
+[32m +        })[m
+[32m +        nurses.append(payload)[m
+[32m +    return _json_ok([m
+[32m +        nurses,[m
+[32m +        count=len(nurses),[m
+[32m +        kpis={[m
+[32m +            "total_nurses": total_nurses,[m
+[32m +            "kpi_active_nurses": kpi_active_nurses,[m
+[32m +            "kpi_total_patients": Patient.objects.count(),[m
+[32m +            "kpi_active_sessions": Seance.objects.filter(status="en cours").count(),[m
+[32m +            "kpi_scheduled_sessions": Seance.objects.filter(status="planifiée").count(),[m
+[32m +            "kpi_avg_load": round(Patient.objects.count() / total_nurses) if total_nurses else 0,[m
+[32m +        },[m
+[32m +    )[m
+[32m +[m
+[32m +[m
+[32m +@api_login_required[m
+[32m +def api_nurse_detail(request, nurse_id):[m
+[32m +    current_user = request.current_user[m
+[32m +    if not _has_role(current_user, "Admin", "Docteur"):[m
+[32m +        return _json_err("Insufficient permissions", status=403)[m
+[32m +    if request.method != "GET":[m
+[32m +        return _json_err("GET required", status=405)[m
+[32m +    nurse = ([m
+[32m +        User.objects.filter(role__name="Infirmier", id=nurse_id)[m
+[32m +        .select_related("role")[m
+[32m +        .first()[m
+[32m +    )[m
+[32m +    if not nurse:[m
+[32m +        return _json_err("Infirmier introuvable.", status=404)[m
+[32m +    profile = Profile.objects.filter(user=nurse).first()[m
+[32m +    return _json_ok(_staff_profile_payload(nurse, profile))[m
+[32m +[m
+[32m +[m
+[32m +@csrf_exempt[m
+[32m +@api_login_required[m
+[32m +def api_profile(request):[m
+[32m +    """Mobile counterpart of accounts.views.profile."""[m
+[32m +    current_user = request.current_user[m
+[32m +    profile, _ = Profile.objects.get_or_create(user=current_user)[m
+[32m +[m
+[32m +    if request.method == "GET":[m
+[32m +        return _json_ok(_staff_profile_payload(current_user, profile))[m
+[32m +[m
+[32m +    if request.method not in ("PUT", "POST"):[m
+[32m +        return _json_err("GET, PUT or POST required", status=405)[m
+[32m +[m
+[32m +    try:[m
+[32m +        body = json.loads(request.body or "{}")[m
+[32m +    except json.JSONDecodeError:[m
+[32m +        return _json_err("Invalid JSON")[m
+[32m +[m
+[32m +    old_password = body.get("old_password") or ""[m
+[32m +    new_password = body.get("password") or ""[m
+[32m +[m
+[32m +    if current_user.first_login:[m
+[32m +        if not old_password or not new_password:[m
+[32m +            return _json_err([m
+[32m +                "Vous devez changer votre mot de passe pour pouvoir enregistrer."[m
+[32m +            )[m
+[32m +        if not check_password(old_password, current_user.password):[m
+[32m +            return _json_err("Ancien mot de passe incorrect.")[m
+[32m +        current_user.password = make_password(new_password)[m
+[32m +        current_user.first_login = False[m
+[32m +        current_user.save()[m
+[32m +        return _json_ok([m
+[32m +            _staff_profile_payload(current_user, profile),[m
+[32m +            message="Mot de passe mis à jour avec succès !",[m
+[32m +        )[m
+[32m +[m
+[32m +    profile.bio = body.get("bio", profile.bio) or ""[m
+[32m +    profile.formation = body.get("formation", profile.formation) or ""[m
+[32m +    profile.experience = body.get("experience", profile.experience) or ""[m
+[32m +    profile.save()[m
+[32m +[m
+[32m +    # Photo de profil — same contract as accounts.views.profile:[m
+[32m +    # a base64 data-URL "cropped_image" (web CropperJS) is stored directly;[m
+[32m +    # a raw file upload is not supported through this JSON endpoint.[m
+[32m +    cropped_data = body.get("cropped_image")[m
+[32m +    if cropped_data:[m
+[32m +        try:[m
+[32m +            format, imgstr = cropped_data.split(";base64,")[m
+[32m +            ext = format.split("/")[-1][m
+[32m +            file_name = f"profile_{uuid.uuid4()}.{ext}"[m
+[32m +            profile.image = ContentFile(base64.b64decode(imgstr), name=file_name)[m
+[32m +            profile.save()[m
+[32m +        except (ValueError, TypeError, binascii.Error):[m
+[32m +            return _json_err("Image invalide.")[m
+[32m +[m
+[32m +    new_phone = body.get("phone_number")[m
+[32m +    if new_phone is not None and new_phone != current_user.phone_number:[m
+[32m +        current_user.phone_number = new_phone[m
+[32m +        current_user.save(update_fields=["phone_number"])[m
+[32m +[m
+[32m +    new_adresse = body.get("adress") or body.get("address")[m
+[32m +    if new_adresse is not None and new_adresse != current_user.adress:[m
+[32m +        current_user.adress = new_adresse[m
+[32m +        current_user.save(update_fields=["adress"])[m
+[32m +[m
+[32m +    new_email = body.get("email")[m
+[32m +    if new_email is not None and new_email != current_user.email:[m
+[32m +        current_user.email = new_email[m
+[32m +        current_user.save(update_fields=["email"])[m
+[32m +[m
+[32m +    if new_password:[m
+[32m +        if not check_password(old_password, current_user.password):[m
+[32m +            return _json_err("Ancien mot de passe incorrect.")[m
+[32m +        current_user.password = make_password(new_password)[m
+[32m +        current_user.save(update_fields=["password"])[m
+[32m +[m
+[32m +    return _json_ok([m
+[32m +        _staff_profile_payload(current_user, profile),[m
+[32m +        message="Profil mis à jour avec succès !",[m
+[32m +    )[m
+[32m +[m
+[32m +[m
+[32m +def _device_dict(d):[m
+[32m +    return {[m
+[32m +        "id": str(d.id),[m
+[32m +        "raspi_id": d.raspi_id,[m
+[32m +        "description": d.description,[m
+[32m +        "is_active": d.is_active,[m
+[32m +        "last_seen": d.last_seen.isoformat() if d.last_seen else None,[m
+[32m +        "machine": {[m
+[32m +            "id": d.machine.id,[m
+[32m +            "machine_id": d.machine.machine_id,[m
+[32m +        } if d.machine_id else None,[m
+[32m +    }[m
+[32m +[m
+[32m +[m
+[32m +@csrf_exempt[m
+[32m +@api_login_required[m
+[32m +def api_devices(request):[m
+[32m +    """Mobile counterpart of machines.views.raspi_management + add_raspi."""[m
+[32m +    current_user = request.current_user[m
+[32m +    if request.method == "POST":[m
+[32m +        if not _has_role(current_user, "Admin"):[m
+[32m +            return _json_err("Insufficient permissions — Admin only", status=403)[m
+[32m +        try:[m
+[32m +            body = json.loads(request.body or "{}")[m
+[32m +        except json.JSONDecodeError:[m
+[32m +            return _json_err("Invalid JSON")[m
+[32m +        raspi_id = str(body.get("raspi_id", "")).strip()[m
+[32m +        description = str(body.get("description", "")).strip()[m
+[32m +        if not raspi_id:[m
+[32m +            return _json_err("raspi_id requis")[m
+[32m +        if RaspiDevice.objects.filter(raspi_id=raspi_id).exists():[m
+[32m +            return _json_err("Ce Raspi existe déjà", status=409)[m
+[32m +        device = RaspiDevice.objects.create(raspi_id=raspi_id, description=description)[m
+[32m +        return _json_ok(_device_dict(device), message="Appareil ajouté avec succès !")[m
+[32m +[m
+[32m +    if request.method != "GET":[m
+[32m +        return _json_err("GET or POST required", status=405)[m
+[32m +    if not _has_role(current_user, "Admin"):[m
+[32m +        return _json_err("Insufficient permissions — Admin only", status=403)[m
+[32m +[m
+[32m +    devices = list(RaspiDevice.objects.select_related("machine").order_by("raspi_id"))[m
+[32m +    machines = Machine.objects.all().order_by("machine_id")[m
+[32m +    assigned_machine_ids = [d.machine_id for d in devices if d.machine_id][m
+[32m +    total = len(devices)[m
+[32m +    assigned = sum(1 for d in devices if d.machine_id)[m
+[32m +    free = sum(1 for d in devices if not d.machine_id)[m
+[32m +    inactive = sum([m
+[32m +        1[m
+[32m +        for d in devices[m
+[32m +        if d.last_seen is None[m
+[32m +        or (timezone.now() - d.last_seen).total_seconds() > 14400[m
+[32m +    )[m
+[32m +    return _json_ok([m
+[32m +        [_device_dict(d) for d in devices],[m
+[32m +        count=total,[m
+[32m +        stats={[m
+[32m +            "total": total,[m
+[32m +            "assigned": assigned,[m
+[32m +            "free": free,[m
+[32m +            "inactive": inactive,[m
+[32m +        },[m
+[32m +        machines=[[m
+[32m +            {"id": m.id, "machine_id": m.machine_id, "location": m.location}[m
+[32m +            for m in machines[m
+[32m +        ],[m
+[32m +        assigned_machine_ids=assigned_machine_ids,[m
+[32m +    )[m
+[32m +[m
+[32m +[m
+[32m +@csrf_exempt[m
+[32m +@api_login_required[m
+[32m +def api_device_assign(request, raspi_id):[m
+[32m +    """Same contract as machines.views.assign_machine."""[m
+[32m +    if request.method != "POST":[m
+[32m +        return _json_err("POST required", status=405)[m
+[32m +    current_user = request.current_user[m
+[32m +    if not _has_role(current_user, "Admin", "Infirmier", "Docteur"):[m
+[32m +        return _json_err("Insufficient permissions", status=403)[m
+[32m +    try:[m
+[32m +        body = json.loads(request.body or "{}")[m
+[32m +        machine_id = body.get("machine_id")[m
+[32m +    except json.JSONDecodeError:[m
+[32m +        return _json_err("JSON invalide")[m
+[32m +    try:[m
+[32m +        device = RaspiDevice.objects.get(id=raspi_id)[m
+[32m +    except (RaspiDevice.DoesNotExist, ValueError, TypeError, ValidationError):[m
+[32m +        return _json_err("Raspi introuvable", status=404)[m
+[32m +    if machine_id:[m
+[32m +        try:[m
+[32m +            machine = Machine.objects.get(id=machine_id)[m
+[32m +        except (Machine.DoesNotExist, ValueError, TypeError, ValidationError):[m
+[32m +            return _json_err("Machine introuvable", status=404)[m
+[32m +        RaspiDevice.objects.filter(machine=machine).exclude(id=raspi_id).update(machine=None)[m
+[32m +        device.machine = machine[m
+[32m +    else:[m
+[32m +        device.machine = None[m
+[32m +    device.save(update_fields=["machine"])[m
+[32m +    return _json_ok({[m
+[32m +        "raspi_id": device.raspi_id,[m
+[32m +        "machine": device.machine.machine_id if device.machine else None,[m
+[32m +    })[m
+[32m++=======[m
+[32m+     return JsonResponse({[m
+[32m+         "measurements": data,[m
+[32m+         "alerts": alerts_data[m
+[32m+     })[m
+[32m+ [m
+[32m++>>>>>>> Stashed changes[m
