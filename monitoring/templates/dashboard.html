@@ -764,424 +764,225 @@ Machine :
 
 <script>
 
-
-
-  function updateMonitoring(){
-
-
+function refreshDashboard() {
 
     fetch("/api/real-monitoring/")
+        .then(response => response.json())
+        .then(data => {
 
-    
+            console.log("Dashboard:", data);
 
-    .then(response => response.json())
+            updateMonitoring(data.measurements);
+            updateAlerts(data.alerts);
 
-
-
-    .then(data => {
-
-
-
-        console.log("Monitoring:", data);
-
-
-
-        if(data.measurements && data.measurements.length > 0){
-
-
-
-            let m = data.measurements[0];
-
-
-
-            document.getElementById("qb").innerHTML = m.Qb ?? "--";
-
-            document.getElementById("pa").innerHTML = m.PA ?? "--";
-
-            document.getElementById("ptm").innerHTML = m.PTM ?? "--";
-
-            document.getElementById("pv").innerHTML = m.PV ?? "--";
-
-            document.getElementById("uf").innerHTML = m.UF ?? "--";
-
-
-
-            document.getElementById("machine").innerHTML = m.machine ?? "--";
-            const statusElement = document.getElementById("machine-status");
-            const statusBox = document.getElementById("status-box");
-
-            statusElement.innerHTML = m.status ?? "--";
-
-            statusElement.className = "font-semibold";
-
-            if (m.status === "NORMAL") {
-               statusElement.classList.add("text-green-600");
-            }
-
-            else if (m.status === "WARNING") {
-              statusElement.classList.add("text-yellow-600");
-            }
-
-            else if (m.status === "CRITICAL") {
-               statusElement.classList.add("text-red-600");
-            }
-
-
-        }
-
-
-
-    })
-
-
-
-    .catch(error => {
-
-
-
-        console.log("Monitoring error:", error);
-
-
-
-    });
-
-
-
-}
-
-
-
-
-
-
-
-function updateAlerts(){
-  
-
-
-   fetch("/api/real-monitoring/")
-
-
-
-    .then(response => response.json())
-
-
-
-    .then(data => {
-
-
-
-        console.log("Alerts:", data);
-        console.log(data.alerts);
-
-
-
-
-
-        const container = document.getElementById("alerts-container");
-
-
-
-
-
-        container.innerHTML = "";
-
-
-
-
-
-        if(!data.alerts || data.alerts.length === 0){
-
-
-
-            container.innerHTML =
-
-            "<p class='text-gray-500'>Aucune alerte.</p>";
-
-
-
-            return;
-
-
-
-        }
-
-
-
-
-
-
-
-        data.alerts.forEach(alert => {
-
-
-
-
-
-            let color = "bg-yellow-100 text-yellow-800";
-
-
-
-
-
-            if(alert.niveau === "HIGH"){
-
-
-
-                color = "bg-red-100 text-red-800";
-
-
-
-            }
-
-
-
-
-
-
-
-            container.innerHTML += `
-
-
-
-                <div class="border rounded-lg p-3 mb-2">
-
-
-
-
-
-                    <div class="flex justify-between">
-
-
-
-
-
-                        <span class="${color} px-2 py-1 rounded">
-
-
-
-                            ${alert.niveau}
-
-
-
-                        </span>
-
-
-
-
-
-
-
-
-
-
-                    </div>
-
-
-
-
-
-
-
-                    <p class="mt-2 font-semibold">
-                        ${alert.machine}
-                    </p>
-
-                     <p class="mt-2">
-                        ${alert.message}
-                     </p>
-
-
-
-                        
-
-
-
-
-
-                </div>
-
-
-
-            `;
-
-
-
-
-
+        })
+        .catch(error => {
+            console.error("Dashboard error:", error);
         });
-
-
-
-
-
-    })
-
-
-
-
-
-    .catch(error => {
-
-
-
-        console.log("Alerts error:", error);
-
-
-
-    });
-
-
-
-
-
 }
 
 
-
-
-
-
-
-
-
-// تشغيل أول مرة
-
-
-
-function refreshDashboard(){
-
-    fetch("/api/real-monitoring/")
-
-    .then(response => response.json())
-
-    .then(data => {
-
-        console.log("Dashboard:", data);
-
-        updateMonitoring(data.measurements);
-        updateAlerts(data.alerts);
-
-    })
-
-    .catch(error => {
-        console.log("Dashboard error:", error);
-    });
-
-}
-
-
-function updateMonitoring(measurements){
-
+function updateMonitoring(measurements) {
 
     console.log("Measurements:", measurements);
 
+    if (!measurements || measurements.length === 0) {
+        return;
+    }
 
-    if(measurements && measurements.length > 0){
+    // API يرجع الأحدث أولاً
+    const m = measurements[0];
+
+    document.getElementById("qb").textContent =
+        m.Qb ?? "--";
+
+    document.getElementById("pa").textContent =
+        m.PA ?? "--";
+
+    document.getElementById("ptm").textContent =
+        m.PTM ?? "--";
+
+    document.getElementById("pv").textContent =
+        m.PV ?? "--";
+
+    document.getElementById("uf").textContent =
+        m.UF ?? "--";
+
+    document.getElementById("machine").textContent =
+        m.machine ?? "--";
 
 
-        let m = measurements[0];
+    // STATUS
+
+    const statusElement =
+        document.getElementById("machine-status");
+
+    const statusBox =
+        document.getElementById("status-box");
 
 
-        document.getElementById("qb").innerHTML = m.Qb ?? "--";
-        document.getElementById("pa").innerHTML = m.PA ?? "--";
-        document.getElementById("ptm").innerHTML = m.PTM ?? "--";
-        document.getElementById("pv").innerHTML = m.PV ?? "--";
-        document.getElementById("uf").innerHTML = m.UF ?? "--";
-
-        document.getElementById("machine").innerHTML = m.machine ?? "--";
+    statusElement.textContent =
+        m.status ?? "--";
 
 
-        const statusElement = document.getElementById("machine-status");
+    // Reset classes
+
+    statusElement.className =
+        "font-semibold";
+
+    statusBox.className =
+        "mt-4 p-3 rounded-lg";
 
 
-        statusElement.innerHTML = m.status ?? "--";
+    if (m.status === "NORMAL") {
 
-        statusElement.className = "font-semibold";
+        statusElement.classList.add(
+            "text-green-600"
+        );
 
+        statusBox.classList.add(
+            "bg-green-50"
+        );
 
-        if (m.status === "NORMAL") {
-            statusElement.classList.add("text-green-600");
-        }
-        else if (m.status === "WARNING") {
-            statusElement.classList.add("text-yellow-600");
-        }
-        else if (m.status === "CRITICAL") {
-            statusElement.classList.add("text-red-600");
-        }
+    }
+
+    else if (m.status === "WARNING") {
+
+        statusElement.classList.add(
+            "text-yellow-600"
+        );
+
+        statusBox.classList.add(
+            "bg-yellow-50"
+        );
+
+    }
+
+    else if (m.status === "CRITICAL") {
+
+        statusElement.classList.add(
+            "text-red-600"
+        );
+
+        statusBox.classList.add(
+            "bg-red-50"
+        );
 
     }
 
 }
 
 
-
-function updateAlerts(alerts){
-
+function updateAlerts(alerts) {
 
     console.log("Alerts:", alerts);
 
-
-    const container = document.getElementById("alerts-container");
+    const container =
+        document.getElementById("alerts-container");
 
 
     container.innerHTML = "";
 
 
-    if(!alerts || alerts.length === 0){
+    if (!alerts || alerts.length === 0) {
 
-        container.innerHTML =
-        "<p class='text-gray-500'>Aucune alerte.</p>";
+        container.innerHTML = `
+            <p class="text-gray-500">
+                Aucune alerte.
+            </p>
+        `;
 
         return;
-
     }
-
 
 
     alerts.forEach(alert => {
 
+        let color =
+            "bg-yellow-100 text-yellow-800";
 
-        let color = "bg-yellow-100 text-yellow-800";
 
+        if (alert.niveau === "HIGH") {
 
-        if(alert.niveau === "RED"){
-            color = "bg-red-100 text-red-800";
+            color =
+                "bg-red-100 text-red-800";
+
         }
 
+        else if (alert.niveau === "MEDIUM") {
+
+            color =
+                "bg-yellow-100 text-yellow-800";
+
+        }
+
+        else if (alert.niveau === "LOW") {
+
+            color =
+                "bg-blue-100 text-blue-800";
+
+        }
 
 
         container.innerHTML += `
 
-        <div class="border rounded-lg p-3 mb-2">
+            <div class="border rounded-lg p-3 mb-2">
 
-            <span class="${color} px-2 py-1 rounded">
-                ${alert.niveau}
-            </span>
+                <div class="flex items-center justify-between">
 
-            <p class="mt-2 font-semibold">
-                ${alert.machine}
-            </p>
+                    <span class="${color} px-2 py-1 rounded font-semibold">
 
-            <p>
-                ${alert.message}
-            </p>
+                        ${alert.niveau ?? "--"}
 
-        </div>
+                    </span>
+
+                    <span class="text-xs text-gray-500">
+
+                        ${alert.status ?? ""}
+
+                    </span>
+
+                </div>
+
+
+                <p class="mt-2 font-semibold">
+
+                    Machine :
+                    ${alert.machine ?? "--"}
+
+                </p>
+
+
+                <p class="mt-1 text-gray-700">
+
+                    ${alert.message ?? "--"}
+
+                </p>
+
+
+                <p class="mt-1 text-xs text-gray-400">
+
+                    ${alert.time ?? ""}
+
+                </p>
+
+            </div>
 
         `;
 
-
     });
-
 
 }
 
 
+// Première exécution
 
-refreshDashboard();
+ refreshDashboard();
 
-setInterval(refreshDashboard, 3000);
+
+// Actualisation toutes les 3 secondes
+
+ setInterval(refreshDashboard, 3000);
+
 </script>
-
 {% endblock %}

@@ -1082,17 +1082,30 @@ def api_seance_debit(request):
         })
     return JsonResponse({"debit": seance.debit, "machine_id": machine_id, "seance_id": str(seance.id)})
 
+
+
 @csrf_exempt
 def push_measurement(request):
     if request.method != "POST":
         return _json_err("POST required", status=405)
+
     try:
         data = json.loads(request.body)
+
         machine_id = data.get("machine_id")
         machine = Machine.objects.get(machine_id=machine_id)
-        seance = Seance.objects.filter(machine=machine, status="en cours").first()
+
+        seance = Seance.objects.filter(
+            machine=machine,
+            status="en cours"
+        ).first()
+
         if not seance:
-            return _json_err("No active seance for this machine", status=400)
+            return _json_err(
+                "No active seance for this machine",
+                status=400
+            )
+
         measurement = LiveMeasurement.objects.create(
             seance=seance,
             Debit_sang=data.get("Qb"),
@@ -1103,28 +1116,46 @@ def push_measurement(request):
             Volume_UF=data.get("UF_volume"),
             Heparine=data.get("Heparin"),
         )
+
+        # =========================
+        # ALERTES MONITORING
+        # =========================
+
         monitoring_alerts = check_thresholds(measurement)
-        dedup_cutoff = timezone.now() - timedelta(minutes=5)
+
         for niveau, message in monitoring_alerts:
             already = Alerte.objects.filter(
-                reading__seance=seance,
+                reading=measurement,
                 niveau=niveau,
                 message=message,
-                timestamp__gte=dedup_cutoff,
             ).exists()
+
             if not already:
-                Alerte.objects.create(reading=measurement, niveau=niveau, message=message)
+                Alerte.objects.create(
+                    reading=measurement,
+                    niveau=niveau,
+                    message=message
+                )
+
+        # =========================
+        # ALERTES AVANCEES
+        # =========================
+
         seance_alerts_created = 0
+
         try:
             from monitoring.alerte import analyser_mesure
+
             rich_alerts = analyser_mesure(measurement)
+
             for al in rich_alerts:
                 already = SeanceAlert.objects.filter(
                     seance=seance,
                     alert_type=al["alert_type"],
                     danger_level=al["danger_level"],
-                    timestamp__gte=dedup_cutoff,
+                    timestamp__gte=timezone.now() - timedelta(minutes=5),
                 ).exists()
+
                 if not already:
                     SeanceAlert.objects.create(
                         seance=seance,
@@ -1133,17 +1164,26 @@ def push_measurement(request):
                         danger_level=al["danger_level"],
                         recommended_action=al["recommended_action"],
                     )
+
                     seance_alerts_created += 1
-        except Exception:
-            pass
+
+        except Exception as e:
+            print("Erreur analyser_mesure:", e)
+
+        # =========================
+        # REPONSE API
+        # =========================
+
         return JsonResponse({
             "success": True,
             "id": str(measurement.id),
             "monitoring_alerts_created": len(monitoring_alerts),
             "seance_alerts_created": seance_alerts_created,
         })
+
     except Machine.DoesNotExist:
         return _json_err("Machine not found", status=404)
+
     except Exception as e:
         return _json_err(str(e), status=500)
 
@@ -1197,32 +1237,84 @@ def _live_alerts(limit=50):
     items.sort(key=lambda x: x["timestamp"] or "", reverse=True)
     return items[:limit]
 
-
 def real_monitoring(request):
-    measurements = LiveMeasurement.objects.select_related("seance__machine", "seance__patient").order_by("-timestamp")[:20]
+    measurements = (
+        LiveMeasurement.objects
+        .select_related("seance__machine", "seance__patient")
+        .order_by("-timestamp")[:20]
+    )
+
     data = []
+
     for m in measurements:
-        alerts = list(m.alertes.values("id", "niveau", "message", "status", "timestamp"))
+
+        alerts = list(
+            m.alertes.values(
+                "id",
+                "niveau",
+                "message",
+                "status",
+                "timestamp"
+            )
+        )
+
         for a in alerts:
             a["id"] = str(a["id"])
             a["niveau"] = _normalize_level(a["niveau"])
+
             if a.get("timestamp"):
                 a["timestamp"] = a["timestamp"].isoformat()
-        levels = {a["niveau"] for a in alerts if a.get("status") == "NEW"}
-        if "HIGH" in levels:
+
+        levels = {
+            a["niveau"]
+            for a in alerts
+            if a.get("status") == "NEW"
+        }
+
+        if "HIGH" in levels or "RED" in levels:
             status_label = "CRITICAL"
-        elif "MEDIUM" in levels:
+
+        elif "MEDIUM" in levels or "YELLOW" in levels:
             status_label = "WARNING"
+
         else:
             status_label = "NORMAL"
+
         data.append({
             "id": str(m.id),
-            "machine": str(m.seance.machine) if m.seance.machine else None,
-            "machine_id": m.seance.machine.machine_id if m.seance.machine else None,
-            "patient": str(m.seance.patient) if m.seance.patient else None,
+
+            "machine": (
+                str(m.seance.machine)
+                if m.seance.machine
+                else None
+            ),
+
+            "machine_id": (
+                m.seance.machine.machine_id
+                if m.seance.machine
+                else None
+            ),
+
+            "patient": (
+                str(m.seance.patient)
+                if m.seance.patient
+                else None
+            ),
+
             "seance_id": str(m.seance.id),
-            "timestamp": m.timestamp.isoformat() if m.timestamp else None,
-            "time": m.timestamp.isoformat() if m.timestamp else None,
+
+            "timestamp": (
+                m.timestamp.isoformat()
+                if m.timestamp
+                else None
+            ),
+
+            "time": (
+                m.timestamp.isoformat()
+                if m.timestamp
+                else None
+            ),
+
             "Debit_sang": m.Debit_sang,
             "Taux_UF": m.Taux_UF,
             "PA": m.PA,
@@ -1230,46 +1322,19 @@ def real_monitoring(request):
             "PV": m.PV,
             "Volume_UF": m.Volume_UF,
             "Heparine": m.Heparine,
-            # Web JS aliases (dashboard.html / surveillance.html):
+
+            # Dashboard aliases
             "Qb": m.Debit_sang,
             "UF": m.Volume_UF,
+
             "status": status_label,
             "alerts": alerts,
         })
+
     return JsonResponse({
         "success": True,
         "measurements": data,
         "alerts": _live_alerts(),
-        "last_update": timezone.now().isoformat(),
-    })
-
-@api_login_required
-def api_monitoring_live(request):
-    if request.method != "GET":
-        return _json_err("GET required", status=405)
-    active_seances = Seance.objects.filter(status="en cours").select_related("patient", "machine")
-    sessions_data = []
-    for seance in active_seances:
-        last = LiveMeasurement.objects.filter(seance=seance).order_by("-timestamp").first()
-        sessions_data.append({
-            "seance_id": str(seance.id),
-            "patient": str(seance.patient) if seance.patient else None,
-            "machine": seance.machine.machine_id if seance.machine else None,
-            "debit": seance.debit,
-            "Debit_sang": last.Debit_sang if last else None,
-            "Taux_UF": last.Taux_UF if last else None,
-            "PA": last.PA if last else None,
-            "PTM": last.PTM if last else None,
-            "PV": last.PV if last else None,
-            "Volume_UF": last.Volume_UF if last else None,
-            "Heparine": last.Heparine if last else None,
-            "timestamp": last.timestamp.isoformat() if last and last.timestamp else None,
-        })
-    recent_alerts = [a for a in _live_alerts(limit=20) if a["status"] == "NEW"]
-    return JsonResponse({
-        "success": True,
-        "sessions": sessions_data,
-        "alerts": recent_alerts,
         "last_update": timezone.now().isoformat(),
     })
 

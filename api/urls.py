@@ -50,6 +50,10 @@ urlpatterns = [
 
     # Monitoring
     path("real-monitoring/", views.real_monitoring, name="real_monitoring"),
-    path("monitoring/live/", views.api_monitoring_live, name="api_monitoring_live"),
+    path(
+    "monitoring/live/",
+    views.real_monitoring,
+    name="api_monitoring_live"
+   ),
     path("monitoring/", views.api_monitoring, name="api_monitoring"),
 ]
