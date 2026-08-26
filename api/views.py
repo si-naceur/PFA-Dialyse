@@ -1220,19 +1220,7 @@ def _live_alerts(limit=50):
             "timestamp": a.timestamp.isoformat() if a.timestamp else None,
         })
 
-    for a in SeanceAlert.objects.select_related(
-        "seance__machine", "seance__patient"
-    ).order_by("-timestamp")[:limit]:
-        items.append({
-            "id": str(a.id),
-            "source": "seances.Alert",
-            "niveau": _normalize_level(a.danger_level),
-            "message": a.message,
-            "status": a.status,
-            "machine": a.seance.machine.machine_id if a.seance.machine else None,
-            "time": a.timestamp.isoformat() if a.timestamp else None,
-            "timestamp": a.timestamp.isoformat() if a.timestamp else None,
-        })
+    
 
     items.sort(key=lambda x: x["timestamp"] or "", reverse=True)
     return items[:limit]

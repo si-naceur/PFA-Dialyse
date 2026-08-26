@@ -1,7 +1,7 @@
 def check_thresholds(reading):
     alerts = []
 
-    # PA
+    # PA - Pression artérielle
     if reading.PA is not None:
         if reading.PA < 70:
             alerts.append(
@@ -20,7 +20,7 @@ def check_thresholds(reading):
                 ("YELLOW", "Pression artérielle élevée")
             )
 
-    # PV
+    # PV - Pression veineuse
     if reading.PV is not None:
         if reading.PV < 30:
             alerts.append(

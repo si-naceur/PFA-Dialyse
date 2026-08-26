@@ -2,6 +2,7 @@ import base64
 import json
 import re
 import random
+import httpx
 
 from fastapi import FastAPI, UploadFile, File
 from openai import AsyncOpenAI
@@ -75,8 +76,34 @@ Répond uniquement en JSON :
   "Heparin": number or null
 }
 """
+DJANGO_API_URL = "http://127.0.0.1:8000/api/push/"
+
+
+async def send_to_django(data: dict):
+    payload = {
+        "machine_id": "M001",
+        "Qb": data.get("Qb"),
+        "UF_rate": data.get("UF_rate"),
+        "PA": data.get("PA"),
+        "PTM": data.get("PTM"),
+        "PV": data.get("PV"),
+        "UF_volume": data.get("UF_volume"),
+        "Heparin": data.get("Heparin"),
+    }
+
+    async with httpx.AsyncClient() as http_client:
+        response = await http_client.post(
+            DJANGO_API_URL,
+            json=payload,
+            timeout=10.0
+        )
+
+        response.raise_for_status()
+
+        return response.json()
 
 # ===================== ENDPOINT PRINCIPAL =====================
+
 @app.post("/analyze/")
 async def analyze(file: UploadFile = File(...)):
     try:
@@ -86,12 +113,22 @@ async def analyze(file: UploadFile = File(...)):
         ext = (file.filename or "image.jpg").split(".")[-1].lower()
         media_type = "image/jpeg" if ext in ("jpg", "jpeg") else f"image/{ext}"
 
-        # ── Vérifier si le modèle est disponible ──
+        # Vérifier si le modèle est disponible
         if not await model_is_available():
             print("[FALLBACK] Modèle indisponible → valeurs aléatoires")
-            return generate_random_values()
 
-        # ── Appel normal au modèle ──
+            data = generate_random_values()
+
+            try:
+                django_response = await send_to_django(data)
+                data["_django"] = django_response
+            except Exception as django_error:
+                print(f"[DJANGO ERROR] {django_error}")
+                data["_django_error"] = str(django_error)
+
+            return data
+
+        # Appel au modèle Qwen
         response = await client.chat.completions.create(
             model=MODEL_NAME,
             messages=[
@@ -100,9 +137,14 @@ async def analyze(file: UploadFile = File(...)):
                     "content": [
                         {
                             "type": "image_url",
-                            "image_url": {"url": f"data:{media_type};base64,{b64_image}"}
+                            "image_url": {
+                                "url": f"data:{media_type};base64,{b64_image}"
+                            }
                         },
-                        {"type": "text", "text": PROMPT}
+                        {
+                            "type": "text",
+                            "text": PROMPT
+                        }
                     ]
                 }
             ],
@@ -117,17 +159,45 @@ async def analyze(file: UploadFile = File(...)):
 
         if match:
             data = json.loads(match.group())
-            data["_source"] = "model"   # Indique que c'est une vraie lecture
+            data["_source"] = "model"
+
+            # Envoyer automatiquement vers Django
+            try:
+                django_response = await send_to_django(data)
+                data["_django"] = django_response
+            except Exception as django_error:
+                print(f"[DJANGO ERROR] {django_error}")
+                data["_django_error"] = str(django_error)
+
             return data
 
-        # JSON introuvable dans la réponse → fallback
-        print("[FALLBACK] JSON non trouvé dans la réponse → valeurs aléatoires")
-        return generate_random_values()
+        # JSON introuvable → fallback
+        print("[FALLBACK] JSON non trouvé → valeurs aléatoires")
+
+        data = generate_random_values()
+
+        try:
+            django_response = await send_to_django(data)
+            data["_django"] = django_response
+        except Exception as django_error:
+            print(f"[DJANGO ERROR] {django_error}")
+            data["_django_error"] = str(django_error)
+
+        return data
 
     except Exception as e:
         print(f"[FALLBACK] Exception : {e} → valeurs aléatoires")
-        return generate_random_values()
 
+        data = generate_random_values()
+
+        try:
+            django_response = await send_to_django(data)
+            data["_django"] = django_response
+        except Exception as django_error:
+            print(f"[DJANGO ERROR] {django_error}")
+            data["_django_error"] = str(django_error)
+
+        return data
 
 # ===================== ENDPOINT DE STATUT =====================
 @app.get("/status/")
