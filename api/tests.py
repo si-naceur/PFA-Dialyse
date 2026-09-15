@@ -263,6 +263,33 @@ class Phase1ApiTests(TestCase):
         self.assertEqual(res.status_code, 201)
         self.assertTrue(res.json().get("success"))
 
+    def test_session_create_api_nurse_forbidden(self):
+        """Nurses must not create sessions via the API (same rule as web)."""
+        self._login(self.nurse_user)
+        payload = {
+            "patient_id": self.patient.id,
+            "machine_id": self.machine.id,
+            "session_date": "2026-09-01",
+            "start_time": "10:00",
+            "duration": 4,
+            "debit": 30,
+        }
+        res = self.client.post("/api/sessions/", data=json.dumps(payload), content_type="application/json")
+        self.assertEqual(res.status_code, 403)
+        self.assertFalse(Seance.objects.filter(session_date="2026-09-01", start_hour="10:00").exists())
+
+    def test_session_create_api_anonymous_forbidden(self):
+        payload = {
+            "patient_id": self.patient.id,
+            "machine_id": self.machine.id,
+            "session_date": "2026-09-01",
+            "start_time": "10:00",
+            "duration": 4,
+            "debit": 30,
+        }
+        res = self.client.post("/api/sessions/", data=json.dumps(payload), content_type="application/json")
+        self.assertEqual(res.status_code, 401)
+
     def test_session_start_end_cancel(self):
         self._login(self.doctor_user)
         # Start session

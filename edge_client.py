@@ -22,24 +22,27 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 # ===================== CONFIG =====================
-RASPI_ID = "RASPI-02"
-MACHINE_ID_SIM = "M001"          # utilisé in simulation
+# All values are configurable via environment variables (see .env.example).
+# No hardware IDs, credentials or URLs are hardcoded.
+RASPI_ID = os.environ.get("RASPI_ID", "RASPI-02")
+MACHINE_ID_SIM = os.environ.get("MACHINE_ID", "M001")  # used in simulation
 
 # MQTT
-MQTT_BROKER = "localhost"
-MQTT_PORT = 1883
-MQTT_TOPIC_PREFIX = "dialysis/machine"
+MQTT_BROKER = os.environ.get("MQTT_HOST", "localhost")
+MQTT_PORT = int(os.environ.get("MQTT_PORT", "1883"))
+MQTT_TOPIC_PREFIX = os.environ.get("MQTT_TOPIC_PREFIX", "dialysis/machine")
 
 # HTTP fallback (Django) — même endpoint REST que /api/push/
-DJANGO_PUSH_URL = "http://127.0.0.1:8000/api/push/"
-HEARTBEAT_URL = "http://127.0.0.1:8000/machines/raspi/heartbeat/"
-DEBIT_API = "http://127.0.0.1:8000/api/seance/debit/"
-LOCAL_AI_API = "http://127.0.0.1:8001/analyze/"
+DJANGO_BASE_URL = os.environ.get("DJANGO_BASE_URL", "http://127.0.0.1:8000")
+DJANGO_PUSH_URL = f"{DJANGO_BASE_URL}/api/push/"
+HEARTBEAT_URL = f"{DJANGO_BASE_URL}/machines/raspi/heartbeat/"
+DEBIT_API = f"{DJANGO_BASE_URL}/api/seance/debit/"
+LOCAL_AI_API = os.environ.get("AI_API_URL", "http://127.0.0.1:8001/analyze/")
 
 # Offline
 OFFLINE_DB = Path(__file__).parent / "offline_buffer.db"
-DEFAULT_INTERVAL = 15            # seconds between readings in sim mode
-IMAGE_PATH = "frame.jpg"
+DEFAULT_INTERVAL = int(os.environ.get("RASPI_DEFAULT_DEBIT", "15"))  # seconds between readings in sim mode
+IMAGE_PATH = os.environ.get("RASPI_IMAGE_PATH", "frame.jpg")
 
 # ==================================================
 
@@ -109,7 +112,14 @@ def flush_offline(mqtt_client=None, use_http=False):
 def create_mqtt_client():
     try:
         import paho.mqtt.client as mqtt
-        client = mqtt.Client(client_id=f"edge-{RASPI_ID}-{int(time.time())}")
+        # Compatible avec les nouvelles versions de paho-mqtt
+        try:
+            client = mqtt.Client(
+                mqtt.CallbackAPIVersion.VERSION2,
+                client_id=f"edge-{RASPI_ID}-{int(time.time())}",
+            )
+        except AttributeError:
+            client = mqtt.Client(client_id=f"edge-{RASPI_ID}-{int(time.time())}")
         client.connect(MQTT_BROKER, MQTT_PORT, 60)
         client.loop_start()
         print(f"[MQTT] Connected to {MQTT_BROKER}:{MQTT_PORT}")

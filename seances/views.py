@@ -138,7 +138,7 @@ def create_session(request):
         return JsonResponse({'success': True, 'id': str(seance.id)})
     
     # GET
-    return render(request, 'createSession.html', {'current_user': current_user})
+    return redirect("seances:planning")
     
 # class PreSessionForm(forms.ModelForm):
 #     class Meta:

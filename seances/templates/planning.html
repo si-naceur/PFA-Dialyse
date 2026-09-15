@@ -26,6 +26,7 @@
       <p class="text-xs md:text-sm text-gray-600 mt-1">Gérez le planning des séances de dialyse</p>
     </div>
 
+    {% if current_user.role.name == "Admin" or current_user.role.name == "Docteur" %}
     <button id="newSessionBtn" type="button"
       class="flex items-center gap-2 bg-blue-50 border border-blue-200 px-4 py-2 rounded-lg hover:bg-blue-100 transition-colors"
       style="cursor: pointer;">
@@ -37,6 +38,7 @@
       </span>
       
     </button>
+    {% endif %}
   </div>
 
   <!-- Statistics Cards -->
@@ -836,7 +838,10 @@ async function runSearch() {
 
   // Modal nouvelle séance
   const newSessionModal = document.getElementById('newSessionModal');
-  document.getElementById('newSessionBtn').addEventListener('click', () => newSessionModal.classList.remove('hidden'));
+  const newSessionBtn = document.getElementById('newSessionBtn');
+  if (newSessionBtn) {
+    newSessionBtn.addEventListener('click', () => newSessionModal.classList.remove('hidden'));
+  }
   document.getElementById('closeNewModal').onclick = 
   document.getElementById('cancelNewModal').onclick = () => newSessionModal.classList.add('hidden');
 

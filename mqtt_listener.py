@@ -30,9 +30,10 @@ from monitoring.models import LiveMeasurement, Alerte
 from monitoring.services import check_thresholds
 
 # ===================== MQTT config =====================
-MQTT_BROKER = "localhost"
-MQTT_PORT = 1883
-MQTT_TOPIC = "dialysis/machine/#"
+# Configurable via environment variables (see .env.example).
+MQTT_BROKER = os.environ.get("MQTT_HOST", "localhost")
+MQTT_PORT = int(os.environ.get("MQTT_PORT", "1883"))
+MQTT_TOPIC = os.environ.get("MQTT_TOPIC", "dialysis/machine/#")
 
 # =======================================================
 

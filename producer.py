@@ -1,17 +1,20 @@
+import os
 import requests
 import time
 
 # ===================== CONFIG =====================
-LOCAL_AI_API  = "http://127.0.0.1:8001/analyze/"
-DJANGO_SAVE_API = "http://127.0.0.1:8000/api/monitoring/save/"
+# All values are configurable via environment variables (see .env.example).
+# No credentials or hardware IDs are hardcoded.
+DJANGO_BASE_URL = os.environ.get("DJANGO_BASE_URL", "http://127.0.0.1:8000")
 
-DJANGO_API = "http://127.0.0.1:8000/monitoring/push/"
-DEBIT_API     = "http://127.0.0.1:8000/api/seance/debit/"
-HEARTBEAT_URL = "http://127.0.0.1:8000/machines/raspi/heartbeat/"
+LOCAL_AI_API    = os.environ.get("AI_API_URL", "http://127.0.0.1:8001/analyze/")
+DJANGO_API      = f"{DJANGO_BASE_URL}/api/push/"
+DEBIT_API       = f"{DJANGO_BASE_URL}/api/seance/debit/"
+HEARTBEAT_URL   = f"{DJANGO_BASE_URL}/machines/raspi/heartbeat/"
 
-RASPI_ID      = "RASPI-02"   # ← identifiant unique de ce Raspi, codé en dur une seule fois
-IMAGE_PATH = "frame.jpg"
-DEFAULT_DEBIT = 60
+RASPI_ID        = os.environ.get("RASPI_ID", "RASPI-02")
+IMAGE_PATH      = os.environ.get("RASPI_IMAGE_PATH", "frame.jpg")
+DEFAULT_DEBIT   = int(os.environ.get("RASPI_DEFAULT_DEBIT", "60"))
 
 # Machine assignée — récupérée dynamiquement via heartbeat, pas codée en dur
 MACHINE_ID = None
@@ -106,8 +109,11 @@ def send_to_django(values: dict, machine_id: str):
     try:
         r = requests.post(DJANGO_API, json=payload, timeout=10)
         print("Django Status:", r.status_code)
+        print("Django Réponse:", r.text[:300])
+        return r.status_code
     except Exception as e:
         print("Erreur Django:", e)
+        return None
 
 
 # ===================== BOUCLE PRINCIPALE =====================
@@ -128,7 +134,6 @@ if __name__ == "__main__":
 
         # 3. Capturer et analyser l'image
         ai_values = analyze_image(IMAGE_PATH)
-        
 
         # 4. Envoyer les résultats à Django
         if ai_values:

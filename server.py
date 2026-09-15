@@ -24,7 +24,7 @@ if token:
         api_key=token
     )
 else:
-    print("[INFO] No HF_TOKEN found → using fallback mode")
+    print("[INFO] No HF_TOKEN found - using fallback mode")
 
 # ===================== FALLBACK ALÉATOIRE =====================
 def generate_random_values() -> dict:
@@ -88,7 +88,7 @@ async def analyze(file: UploadFile = File(...)):
 
         # ── Vérifier si le modèle est disponible ──
         if not await model_is_available():
-            print("[FALLBACK] Modèle indisponible → valeurs aléatoires")
+            print("[FALLBACK] Modele indisponible -> valeurs aleatoires")
             return generate_random_values()
 
         # ── Appel normal au modèle ──
@@ -121,11 +121,11 @@ async def analyze(file: UploadFile = File(...)):
             return data
 
         # JSON introuvable dans la réponse → fallback
-        print("[FALLBACK] JSON non trouvé dans la réponse → valeurs aléatoires")
+        print("[FALLBACK] JSON non trouve dans la reponse -> valeurs aleatoires")
         return generate_random_values()
 
     except Exception as e:
-        print(f"[FALLBACK] Exception : {e} → valeurs aléatoires")
+        print(f"[FALLBACK] Exception : {e} -> valeurs aleatoires")
         return generate_random_values()
 
 
