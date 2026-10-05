@@ -14,6 +14,11 @@ class AuthRepositoryImpl implements AuthRepository {
     final result = await _remoteDatasource.login(username, password);
     final userModel = result.user;
 
+    if (result.sessionId == null || result.sessionId!.isEmpty) {
+      await _storageService.clearSession();
+      throw StateError('Login succeeded but no sessionid was returned');
+    }
+
     await _storageService.saveUserSession(
       userId: userModel.id,
       username: userModel.username,
@@ -23,11 +28,7 @@ class AuthRepositoryImpl implements AuthRepository {
       address: userModel.address,
       specialite: userModel.specialite,
       firstLogin: userModel.firstLogin,
-      // Persist Django session key so ApiClient can authenticate monitoring
-      // and every other protected call (including Flutter Web).
-      cookie: result.sessionId != null && result.sessionId!.isNotEmpty
-          ? 'sessionid=${result.sessionId}'
-          : null,
+      cookie: 'sessionid=${result.sessionId}',
     );
 
     return userModel.toEntity();
@@ -35,8 +36,11 @@ class AuthRepositoryImpl implements AuthRepository {
 
   @override
   Future<void> logout() async {
-    await _remoteDatasource.logout();
-    await _storageService.clearSession();
+    try {
+      await _remoteDatasource.logout();
+    } finally {
+      await _storageService.clearSession();
+    }
   }
 
   @override
@@ -54,6 +58,12 @@ class AuthRepositoryImpl implements AuthRepository {
       return null;
     }
 
+    final valid = await _remoteDatasource.validateSession();
+    if (!valid) {
+      await _storageService.clearSession();
+      return null;
+    }
+
     return UserEntity(
       id: userId,
       username: username,
@@ -63,6 +73,20 @@ class AuthRepositoryImpl implements AuthRepository {
       address: await _storageService.getUserAddress(),
       specialite: await _storageService.getUserSpecialite(),
       firstLogin: await _storageService.getFirstLogin(),
+    );
+  }
+
+  @override
+  Future<void> persistUser(UserEntity user) async {
+    await _storageService.saveUserSession(
+      userId: user.id,
+      username: user.username,
+      email: user.email,
+      role: user.role,
+      phone: user.phone,
+      address: user.address,
+      specialite: user.specialite,
+      firstLogin: user.firstLogin,
     );
   }
 }

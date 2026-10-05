@@ -1,8 +1,10 @@
+import os
 import requests
 import random
 import time
 
 
+EDGE_API_KEY = os.environ.get('EDGE_API_KEY', 'dev-edge-key-change-me')
 URL = "http://127.0.0.1:8000/api/push/"
 
 
@@ -20,7 +22,8 @@ while True:
 
     r = requests.post(
         URL,
-        json=data
+        json=data,
+        headers={'X-Edge-Api-Key': EDGE_API_KEY},
     )
 
 

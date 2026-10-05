@@ -51,10 +51,7 @@ class MonitoringFilters {
   }
 }
 
-/// Backed by GET /api/monitoring/. The dashboard polls every 5 seconds so the
-/// live measurement block and the alert cards stay up to date without showing
-/// a loading spinner on each tick (the last data is kept until a new payload
-/// arrives). Pull-to-refresh always reloads explicitly.
+/// Backed by GET /api/monitoring/. Polls every 5 seconds when authenticated.
 class MonitoringNotifier extends AsyncNotifier<MonitoringDashboardEntity> {
   MonitoringFilters _filters = const MonitoringFilters();
   Timer? _timer;
@@ -66,8 +63,21 @@ class MonitoringNotifier extends AsyncNotifier<MonitoringDashboardEntity> {
     _disposed = false;
     ref.onDispose(() {
       _disposed = true;
-      _timer?.cancel();
+      _stopPolling();
     });
+
+    ref.listen<AuthState>(authStateProvider, (previous, next) {
+      if (next is AuthAuthenticated) {
+        _startPolling();
+      } else {
+        _stopPolling();
+      }
+    });
+
+    if (ref.read(authStateProvider) is! AuthAuthenticated) {
+      return Future.error(StateError('Not authenticated'));
+    }
+
     _startPolling();
     return _fetch();
   }
@@ -86,16 +96,15 @@ class MonitoringNotifier extends AsyncNotifier<MonitoringDashboardEntity> {
   }
 
   void _startPolling() {
-    _timer?.cancel();
+    if (_timer != null || _disposed) return;
     _timer = Timer.periodic(const Duration(seconds: 5), (_) async {
       if (_fetching || _disposed) return;
+      if (ref.read(authStateProvider) is! AuthAuthenticated) return;
       _fetching = true;
       try {
         final data = await _fetch();
         if (!_disposed) state = AsyncValue.data(data);
       } catch (err, stack) {
-        // Keep the previously loaded payload; surface an error only when there
-        // is nothing to show yet.
         if (!_disposed && state is! AsyncData) {
           state = AsyncValue.error(err, stack);
         }
@@ -105,15 +114,20 @@ class MonitoringNotifier extends AsyncNotifier<MonitoringDashboardEntity> {
     });
   }
 
-  /// Update the history filters (day/q/role/sort/status) and reload.
+  void _stopPolling() {
+    _timer?.cancel();
+    _timer = null;
+  }
+
   Future<void> setFilters(MonitoringFilters filters) async {
+    if (ref.read(authStateProvider) is! AuthAuthenticated) return;
     _filters = filters;
     state = const AsyncLoading();
     state = await AsyncValue.guard(_fetch);
   }
 
-  /// Full reload used by pull-to-refresh.
   Future<void> refresh() async {
+    if (ref.read(authStateProvider) is! AuthAuthenticated) return;
     state = const AsyncLoading();
     state = await AsyncValue.guard(_fetch);
   }

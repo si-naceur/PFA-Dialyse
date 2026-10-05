@@ -368,10 +368,19 @@ def post_session_page(request, session_id):
             seance.complications = request.POST.get("complications", "")
             seance.status = "terminée"
             seance.save(update_fields=["status", "complications"])
-            machine=seance.machine
-            machine.status = "Prete"
-            machine.save(update_fields=["status"])
-            return redirect("seances:planning")
+            machine = seance.machine
+            if machine:
+                machine.status = "Prete"
+                machine.save(update_fields=["status"])
+
+            try:
+                from seances.services import generate_session_summary_and_report
+                generate_session_summary_and_report(seance.id)
+            except Exception as e:
+                print(f"[REPORT ERROR] {e}")
+
+            return redirect("patients:session_detail", seance_id=seance.id)
+
     else:
         form = PostSessionForm(instance=obj)
 

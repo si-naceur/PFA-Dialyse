@@ -4,6 +4,7 @@ import '../../../authentication/presentation/providers/auth_provider.dart';
 import '../../data/datasources/patient_remote_datasource.dart';
 import '../../data/repositories/patient_repository_impl.dart';
 import '../../domain/entities/patient_detail_entity.dart';
+import '../../domain/entities/patient_entity.dart';
 import '../../domain/entities/patient_list_result.dart';
 import '../../domain/repositories/patient_repository.dart';
 
@@ -15,8 +16,6 @@ final patientRepositoryProvider = Provider<PatientRepository>((ref) {
 /// Patients list backed by GET /api/patients/?search=<query>.
 class PatientListNotifier extends AsyncNotifier<PatientListResult> {
   String _query = '';
-  // Total patient count from the backend, kept stable while searching
-  // (mirrors Django's "Patients Totaux" KPI that ignores the search filter).
   int _totalCount = 0;
 
   @override
@@ -48,6 +47,14 @@ class PatientListNotifier extends AsyncNotifier<PatientListResult> {
   Future<void> refresh() async {
     state = await AsyncValue.guard(_fetch);
   }
+
+  Future<PatientEntity> createPatient(PatientWritePayload payload) async {
+    final repository = ref.read(patientRepositoryProvider);
+    final created = await repository.createPatient(payload);
+    _totalCount += 1;
+    await refresh();
+    return created;
+  }
 }
 
 final patientsProvider =
@@ -63,3 +70,15 @@ final patientDetailProvider = FutureProvider.family<PatientDetailEntity, int>((
   final repository = ref.watch(patientRepositoryProvider);
   return repository.getPatient(patientId);
 });
+
+Future<PatientDetailEntity> updatePatientProfile(
+  WidgetRef ref,
+  int patientId,
+  PatientWritePayload payload,
+) async {
+  final repository = ref.read(patientRepositoryProvider);
+  final updated = await repository.updatePatient(patientId, payload);
+  ref.invalidate(patientDetailProvider(patientId));
+  ref.invalidate(patientsProvider);
+  return updated;
+}

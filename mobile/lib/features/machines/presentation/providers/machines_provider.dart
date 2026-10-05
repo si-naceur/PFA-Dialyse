@@ -5,6 +5,7 @@ import '../../data/datasources/machine_remote_datasource.dart';
 import '../../data/repositories/machine_repository_impl.dart';
 import '../../domain/entities/machine_detail_entity.dart';
 import '../../domain/entities/machine_entity.dart';
+import '../../domain/entities/machine_list_result.dart';
 import '../../domain/repositories/machine_repository.dart';
 
 final machineRepositoryProvider = Provider<MachineRepository>((ref) {
@@ -12,16 +13,15 @@ final machineRepositoryProvider = Provider<MachineRepository>((ref) {
   return MachineRepositoryImpl(MachineRemoteDatasource(apiClient));
 });
 
-/// Machines list backed by GET /api/machines/ with search/status/location filters.
-class MachineListNotifier extends AsyncNotifier<List<MachineEntity>> {
+class MachineListNotifier extends AsyncNotifier<MachineListResult> {
   String _search = '';
   String _status = '';
   String _location = '';
 
   @override
-  Future<List<MachineEntity>> build() => _fetch();
+  Future<MachineListResult> build() => _fetch();
 
-  Future<List<MachineEntity>> _fetch() async {
+  Future<MachineListResult> _fetch() async {
     final repository = ref.read(machineRepositoryProvider);
     return repository.getMachines(
       search: _search,
@@ -45,14 +45,20 @@ class MachineListNotifier extends AsyncNotifier<List<MachineEntity>> {
   Future<void> refresh() async {
     state = await AsyncValue.guard(_fetch);
   }
+
+  Future<MachineEntity> createMachine(MachineCreatePayload payload) async {
+    final created =
+        await ref.read(machineRepositoryProvider).createMachine(payload);
+    await refresh();
+    return created;
+  }
 }
 
 final machinesProvider =
-    AsyncNotifierProvider<MachineListNotifier, List<MachineEntity>>(
+    AsyncNotifierProvider<MachineListNotifier, MachineListResult>(
       MachineListNotifier.new,
     );
 
-/// Machine dossier backed by GET /api/machines/<id>/.
 final machineDetailProvider = FutureProvider.family<MachineDetailEntity, int>((
   ref,
   machineId,
@@ -60,3 +66,16 @@ final machineDetailProvider = FutureProvider.family<MachineDetailEntity, int>((
   final repository = ref.watch(machineRepositoryProvider);
   return repository.getMachine(machineId);
 });
+
+Future<MachineDetailEntity> configureMachineProfile(
+  WidgetRef ref,
+  int machineId,
+  MachineConfigurePayload payload,
+) async {
+  final updated = await ref
+      .read(machineRepositoryProvider)
+      .configureMachine(machineId, payload);
+  ref.invalidate(machineDetailProvider(machineId));
+  ref.invalidate(machinesProvider);
+  return updated;
+}

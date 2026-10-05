@@ -239,223 +239,90 @@ let alerts = data.alerts || [];
 
 
 if(data.measurements && data.measurements.length > 0){
-
-    let m = data.measurements[0];
-
-
-    sessions.push({
-
-        patient:"Patient test",
-
-        machine:m.machine,
-
-        Qb:m.Qb,
-
-        PA:m.PA,
-
-        PTM:m.PTM,
-
-        PV:m.PV,
-
-        UF:m.UF
-
+    data.measurements.forEach(m => {
+        sessions.push({
+            patient: m.patient || "Patient Dialyse",
+            machine: m.machine || m.machine_id || "M001",
+            Qb: m.Debit_sang,
+            PA: m.PA,
+            PTM: m.PTM,
+            PV: m.PV,
+            UF: m.Volume_UF,
+            UF_rate: m.Taux_UF,
+            Heparine: m.Heparine,
+            image_url: m.image_url,
+            source: m.source,
+            status_validation: m.status_validation
+        });
     });
-
 }
-
-
 
         // ===============================
         // UPDATE KPI
         // ===============================
 
+        document.getElementById("sessions-count").textContent = sessions.length;
+        document.getElementById("machines-count").textContent = sessions.length;
 
-        document.getElementById(
-            "sessions-count"
-        ).textContent = sessions.length;
+        let critical = alerts.filter(a => a.niveau === "HIGH").length;
+        let warning = alerts.filter(a => a.niveau === "MEDIUM").length;
 
-
-        document.getElementById(
-            "machines-count"
-        ).textContent = sessions.length;
-
-
-
-        let critical = alerts.filter(
-            a => a.niveau === "HIGH"
-        ).length;
-
-
-        let warning = alerts.filter(
-            a => a.niveau === "MEDIUM"
-        ).length;
-
-
-
-        document.getElementById(
-            "critical-alerts"
-        ).textContent = critical;
-
-
-
-        document.getElementById(
-            "warning-alerts"
-        ).textContent = warning;
-
-
-
-        document.getElementById(
-            "stable-patients"
-        ).textContent =
-        sessions.length - critical;
-
-
-
-        document.getElementById(
-            "last-update"
-        ).textContent =
-        "Dernière mise à jour : "
-        +
-        new Date().toLocaleTimeString();
-
-
-
+        document.getElementById("critical-alerts").textContent = critical;
+        document.getElementById("warning-alerts").textContent = warning;
+        document.getElementById("stable-patients").textContent = Math.max(0, sessions.length - critical);
+        document.getElementById("last-update").textContent = "Dernière mise à jour : " + new Date().toLocaleTimeString();
 
         // ===============================
         // DISPLAY SESSIONS
         // ===============================
 
-
-        let sessionContainer =
-        document.getElementById(
-            "sessions-container"
-        );
-
-
-        sessionContainer.innerHTML="";
-
-
+        let sessionContainer = document.getElementById("sessions-container");
+        sessionContainer.innerHTML = "";
 
         if(sessions.length === 0){
-
-
             sessionContainer.innerHTML = `
-
-            <div class="
-            bg-white
-            border
-            rounded-xl
-            p-5">
-
-            Aucune séance active
-
+            <div class="bg-white border rounded-xl p-5 text-gray-500">
+                Aucune séance active ou mesure disponible
             </div>
-
             `;
-
-
         }
 
-
-        sessions.forEach(session=>{
-
-
+        sessions.forEach(session => {
             sessionContainer.innerHTML += `
-
-            <div class="
-            bg-white
-            border
-            rounded-xl
-            shadow
-            p-5">
-
-
-                <h3 class="
-                text-lg
-                font-bold
-                mb-3">
-
-                Patient :
-                ${session.patient}
-
+            <div class="bg-white border rounded-xl shadow p-5">
+                <h3 class="text-lg font-bold mb-1">
+                Patient : ${session.patient}
                 </h3>
-
-
-
-                <p>
-                Machine :
-                <b>
-                ${session.machine}
-                </b>
+                <p class="text-sm text-gray-600">
+                Machine : <b>${session.machine}</b>
                 </p>
-
+                
+                ${session.image_url ? `
+                <div class="my-3">
+                    <p class="text-xs font-medium text-gray-500 mb-1">Dernière image machine :</p>
+                    <img src="${session.image_url}" alt="Capture machine" class="w-full h-40 object-cover rounded-lg border shadow-sm">
+                    <div class="flex justify-between items-center text-[11px] text-gray-400 mt-1">
+                        <span>Source: ${session.source || 'AI_OCR'}</span>
+                        <span class="px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 font-medium">${session.status_validation || 'VALIDATED'}</span>
+                    </div>
+                </div>
+                ` : ''}
 
                 <hr class="my-3">
 
-
-
-                <div class="space-y-2">
-
-
-                    <p>
-                    Débit sang :
-                    <b>
-                    ${session.Qb ?? "--"}
-                    ml/min
-                    </b>
-                    </p>
-
-
-
-                    <p>
-                    PA :
-                    <b>
-                    ${session.PA ?? "--"}
-                    mmHg
-                    </b>
-                    </p>
-
-
-
-                    <p>
-                    PTM :
-                    <b>
-                    ${session.PTM ?? "--"}
-                    mmHg
-                    </b>
-                    </p>
-
-
-
-                    <p>
-                    PV :
-                    <b>
-                    ${session.PV ?? "--"}
-                    mmHg
-                    </b>
-                    </p>
-
-
-
-                    <p>
-                    Volume UF :
-                    <b>
-                    ${session.UF ?? "--"}
-                    ml
-                    </b>
-                    </p>
-
-
+                <div class="space-y-1.5 text-sm">
+                    <p>Débit sang (Qb) : <b>${session.Qb ?? "--"} mL/min</b></p>
+                    <p>PA : <b>${session.PA ?? "--"} mmHg</b></p>
+                    <p>PTM : <b>${session.PTM ?? "--"} mmHg</b></p>
+                    <p>PV : <b>${session.PV ?? "--"} mmHg</b></p>
+                    <p>Volume UF : <b>${session.UF ?? "--"} mL</b></p>
+                    <p>Taux UF : <b>${session.UF_rate ?? "--"} mL/h</b></p>
+                    <p>Héparine : <b>${session.Heparine ?? "--"} UI/h</b></p>
                 </div>
-
-
             </div>
-
-
             `;
-
-
         });
+
 
 
 

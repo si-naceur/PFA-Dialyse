@@ -1,7 +1,16 @@
-venv/
+﻿venv/
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
 db.sqlite3
 .env
+!.env.example
+*.log
+.DS_Store
+.idea/
+.vscode/
+mobile/.dart_tool/
+mobile/build/
+mobile/.flutter-plugins-dependencies
+offline_buffer.db

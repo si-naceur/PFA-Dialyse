@@ -1,12 +1,14 @@
 import '../../domain/entities/machine_entity.dart';
 
 class RaspiModel {
+  final String? id;
   final String raspiId;
   final String? description;
   final bool isActive;
   final String? lastSeen;
 
   const RaspiModel({
+    this.id,
     required this.raspiId,
     this.description,
     required this.isActive,
@@ -15,15 +17,17 @@ class RaspiModel {
 
   factory RaspiModel.fromJson(Map<String, dynamic> json) {
     return RaspiModel(
-      raspiId: json['raspi_id'] as String? ?? '',
-      description: json['description'] as String?,
-      isActive: json['is_active'] as bool? ?? false,
-      lastSeen: json['last_seen'] as String?,
+      id: json['id']?.toString(),
+      raspiId: json['raspi_id']?.toString() ?? '',
+      description: json['description']?.toString(),
+      isActive: json['is_active'] == true,
+      lastSeen: json['last_seen']?.toString(),
     );
   }
 
   RaspiEntity toEntity() {
     return RaspiEntity(
+      id: id,
       raspiId: raspiId,
       description: description,
       isActive: isActive,
@@ -59,16 +63,16 @@ class MachineModel {
 
   factory MachineModel.fromJson(Map<String, dynamic> json) {
     return MachineModel(
-      id: (json['id'] as num).toInt(),
-      machineId: json['machine_id'] as String? ?? '',
-      model: json['model'] as String? ?? '',
-      manufacturer: json['manufacturer'] as String? ?? '',
-      installationDate: json['installation_date'] as String?,
-      status: json['status'] as String? ?? '',
-      location: json['location'] as String? ?? '',
+      id: (json['id'] as num?)?.toInt() ?? 0,
+      machineId: json['machine_id']?.toString() ?? '',
+      model: json['model']?.toString() ?? '',
+      manufacturer: json['manufacturer']?.toString() ?? '',
+      installationDate: json['installation_date']?.toString(),
+      status: json['status']?.toString() ?? '',
+      location: json['location']?.toString() ?? '',
       sessions: (json['sessions'] as num?)?.toInt() ?? 0,
       hours: (json['hours'] as num?)?.toDouble() ?? 0.0,
-      raspi: json['raspi'] != null
+      raspi: json['raspi'] is Map<String, dynamic>
           ? RaspiModel.fromJson(json['raspi'] as Map<String, dynamic>)
           : null,
     );

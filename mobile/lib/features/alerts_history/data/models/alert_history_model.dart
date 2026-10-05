@@ -6,24 +6,26 @@ class AlertHistoryModel {
   static AlertHistoryEntity fromJson(Map<String, dynamic> json) {
     return AlertHistoryEntity(
       id: json['id']?.toString() ?? '',
-      source: json['source'] as String? ?? '',
-      sessionId: json['session_id'] as String?,
-      patient: json['patient'] as String?,
-      machine: json['machine'] as String?,
-      alertType: json['alert_type'] as String? ?? '',
-      message: json['message'] as String? ?? '',
-      dangerLevel: json['danger_level'] as String? ?? '',
-      severity:
-          json['severity'] as String? ?? json['danger_level'] as String? ?? '',
-      recommendedAction: json['recommended_action'] as String? ?? '',
-      status: json['status'] as String? ?? 'NEW',
-      timestamp: json['timestamp'] as String?,
+      source: json['source']?.toString() ?? '',
+      sessionId: json['session_id']?.toString(),
+      patient: json['patient']?.toString(),
+      machine: json['machine']?.toString(),
+      alertType: json['alert_type']?.toString() ?? '',
+      message: json['message']?.toString() ?? '',
+      dangerLevel: json['danger_level']?.toString() ?? '',
+      severity: json['severity']?.toString() ??
+          json['danger_level']?.toString() ??
+          '',
+      recommendedAction: json['recommended_action']?.toString() ?? '',
+      status: json['status']?.toString() ?? 'NEW',
+      timestamp: json['timestamp']?.toString(),
     );
   }
 
   static List<AlertHistoryEntity> listFromJson(List<dynamic> json) {
     return json
-        .map((e) => fromJson(e as Map<String, dynamic>))
+        .whereType<Map<String, dynamic>>()
+        .map(fromJson)
         .toList(growable: false);
   }
 }

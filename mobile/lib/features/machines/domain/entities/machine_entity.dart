@@ -1,10 +1,12 @@
 class RaspiEntity {
+  final String? id;
   final String raspiId;
   final String? description;
   final bool isActive;
   final String? lastSeen;
 
   const RaspiEntity({
+    this.id,
     required this.raspiId,
     this.description,
     required this.isActive,

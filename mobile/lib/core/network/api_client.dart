@@ -13,6 +13,11 @@ class ApiClient {
   late final Dio _dio;
   final SecureStorageService _storageService;
 
+  /// Invoked once when a protected call returns 401 (invalid/expired session).
+  void Function()? onUnauthorized;
+
+  bool _handlingUnauthorized = false;
+
   ApiClient(this._storageService) {
     _dio = Dio(
       BaseOptions(
@@ -38,18 +43,16 @@ class ApiClient {
 
           final cookie = await _storageService.getSessionCookie();
           if (cookie != null && cookie.isNotEmpty) {
-            final sessionMatch = RegExp(
-              r'sessionid=([^;]+)',
-            ).firstMatch(cookie);
+            final sessionMatch =
+                RegExp(r'sessionid=([^;]+)').firstMatch(cookie);
             if (sessionMatch != null && sessionMatch.groupCount >= 1) {
-              // Allowed on Flutter Web (unlike the Cookie header). Django
-              // api_login_required loads the same session from this header.
               options.headers['X-Session-Id'] = sessionMatch.group(1);
             }
 
             if (!kIsWeb) {
               options.headers['Cookie'] = cookie;
-              final csrfMatch = RegExp(r'csrftoken=([^;]+)').firstMatch(cookie);
+              final csrfMatch =
+                  RegExp(r'csrftoken=([^;]+)').firstMatch(cookie);
               if (csrfMatch != null && csrfMatch.groupCount >= 1) {
                 options.headers['X-CSRFToken'] = csrfMatch.group(1);
               }
@@ -75,16 +78,16 @@ class ApiClient {
           }
           return handler.next(response);
         },
-        onError: (DioException e, handler) {
-          final body = e.response?.data;
-          var message = e.message ?? 'An unknown error occurred';
-          if (body is Map<String, dynamic>) {
-            message = body['message'] ?? body['error'] ?? message;
+        onError: (DioException e, handler) async {
+          if (e.response?.statusCode == 401 &&
+              !_isAuthEndpoint(e.requestOptions.path)) {
+            await _notifyUnauthorized();
           }
+
           return handler.reject(
             DioException(
               requestOptions: e.requestOptions,
-              error: ApiException(message, statusCode: e.response?.statusCode),
+              error: _toApiException(e),
               response: e.response,
               type: e.type,
             ),
@@ -92,6 +95,62 @@ class ApiClient {
         },
       ),
     );
+  }
+
+  static ApiException _toApiException(DioException e) {
+    final status = e.response?.statusCode;
+    final body = e.response?.data;
+    String? fromBody;
+    if (body is Map) {
+      fromBody = body['message']?.toString() ?? body['error']?.toString();
+    }
+
+    if (e.type == DioExceptionType.connectionTimeout ||
+        e.type == DioExceptionType.sendTimeout ||
+        e.type == DioExceptionType.receiveTimeout) {
+      return ApiException(
+        'Délai d’attente dépassé. Vérifiez que Django tourne sur ${ApiEndpoints.baseUrl}.',
+        statusCode: status,
+      );
+    }
+    if (e.type == DioExceptionType.connectionError) {
+      return ApiException(
+        'Réseau indisponible. Vérifiez l’URL de l’API (${ApiEndpoints.baseUrl}).',
+        statusCode: status,
+      );
+    }
+    if (status == 403) {
+      return ApiException(
+        fromBody ?? 'Accès refusé (403) pour cette action.',
+        statusCode: status,
+      );
+    }
+    if (status == 401) {
+      return ApiException(
+        fromBody ?? 'Session expirée. Reconnectez-vous.',
+        statusCode: status,
+      );
+    }
+    return ApiException(
+      fromBody ?? e.message ?? 'Une erreur inconnue est survenue',
+      statusCode: status,
+    );
+  }
+
+  bool _isAuthEndpoint(String path) {
+    return path.contains(ApiEndpoints.login) ||
+        path.contains(ApiEndpoints.logout);
+  }
+
+  Future<void> _notifyUnauthorized() async {
+    if (_handlingUnauthorized) return;
+    _handlingUnauthorized = true;
+    try {
+      await _storageService.clearSession();
+      onUnauthorized?.call();
+    } finally {
+      _handlingUnauthorized = false;
+    }
   }
 
   static String _extractCookieHeader(List<String> setCookieHeaders) {
@@ -122,6 +181,24 @@ class ApiClient {
   Future<Response> post(String path, {dynamic data}) async {
     try {
       return await _dio.post(path, data: data);
+    } on DioException catch (e) {
+      throw e.error as ApiException? ??
+          ApiException(e.message ?? 'Network error');
+    }
+  }
+
+  Future<Response> put(String path, {dynamic data}) async {
+    try {
+      return await _dio.put(path, data: data);
+    } on DioException catch (e) {
+      throw e.error as ApiException? ??
+          ApiException(e.message ?? 'Network error');
+    }
+  }
+
+  Future<Response> patch(String path, {dynamic data}) async {
+    try {
+      return await _dio.patch(path, data: data);
     } on DioException catch (e) {
       throw e.error as ApiException? ??
           ApiException(e.message ?? 'Network error');

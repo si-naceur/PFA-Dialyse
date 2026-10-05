@@ -44,4 +44,16 @@ class AuthRemoteDatasource {
       // Best-effort logout trigger on backend
     }
   }
+
+  /// Validates the stored Django session against a protected endpoint.
+  Future<bool> validateSession() async {
+    try {
+      final response = await _apiClient.get(ApiEndpoints.dashboard);
+      final data = response.data;
+      return data is Map<String, dynamic> && data['success'] == true;
+    } on ApiException catch (e) {
+      if (e.statusCode == 401) return false;
+      rethrow;
+    }
+  }
 }

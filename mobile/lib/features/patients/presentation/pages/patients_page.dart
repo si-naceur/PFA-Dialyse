@@ -59,6 +59,18 @@ class _PatientsPageState extends ConsumerState<PatientsPage> {
     final notifier = ref.read(patientsProvider.notifier);
 
     return AppShell(
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () async {
+          final created = await context.push<bool>(AppRouter.patientCreateRoute);
+          if (created == true && context.mounted) {
+            ref.read(patientsProvider.notifier).refresh();
+          }
+        },
+        backgroundColor: const Color(0xFF2563EB),
+        foregroundColor: Colors.white,
+        icon: const Icon(Icons.person_add_alt_1_rounded),
+        label: const Text('Nouveau patient'),
+      ),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [

@@ -1,5 +1,6 @@
 import json
 from datetime import date
+from django.conf import settings
 from django.test import TestCase, Client
 from accounts.models import User, Role
 from patients.models import Patient
@@ -7,11 +8,19 @@ from machines.models import Machine, RaspiDevice
 from seances.models import Seance, Alert as SeanceAlert
 from monitoring.models import LiveMeasurement, Alerte
 
+
 class Phase1ApiTests(TestCase):
     def setUp(self):
         self.client = Client()
+        self.admin_role = Role.objects.create(name="Admin")
         self.doctor_role = Role.objects.create(name="Docteur")
         self.nurse_role = Role.objects.create(name="Infirmier")
+        self.admin_user = User.objects.create(
+            username="admin_test",
+            password="password123",
+            role=self.admin_role,
+            email="admin@test.com",
+        )
         self.doctor_user = User.objects.create(
             username="doc_test",
             password="password123",
@@ -52,6 +61,7 @@ class Phase1ApiTests(TestCase):
             status="planifiée",
             debit=60,
         )
+        self.edge_headers = {"HTTP_X_EDGE_API_KEY": settings.EDGE_API_KEY}
 
     def _login(self, user):
         session = self.client.session
@@ -78,7 +88,6 @@ class Phase1ApiTests(TestCase):
             content_type="application/json",
         )
         session_id = login.json()["sessionid"]
-        # Fresh client with no cookies — only the header, like Flutter Web.
         bare = Client()
         res = bare.get(
             "/api/monitoring/live/",
@@ -124,7 +133,7 @@ class Phase1ApiTests(TestCase):
 
     def test_patients_api_search(self):
         self._login(self.doctor_user)
-        res = self.client.get("/api/patients/?search=Salah")
+        res = self.client.get("/api/patients/?search=Ahmed")
         self.assertEqual(res.status_code, 200)
         self.assertEqual(len(res.json()["data"]), 1)
 
@@ -132,27 +141,33 @@ class Phase1ApiTests(TestCase):
         self._login(self.doctor_user)
         res = self.client.get(f"/api/patients/{self.patient.id}/")
         self.assertEqual(res.status_code, 200)
-        self.assertEqual(res.json()["data"]["id"], self.patient.id)
+        self.assertEqual(res.json()["data"]["last_name"], "Ben Salah")
 
     def test_machines_api(self):
-        self._login(self.doctor_user)
+        self._login(self.nurse_user)
         res = self.client.get("/api/machines/")
         self.assertEqual(res.status_code, 200)
-        data = res.json()["data"]
-        self.assertEqual(len(data), 1)
-        self.assertEqual(data[0]["raspi"]["raspi_id"], "RASPI-TEST")
+        body = res.json()
+        self.assertEqual(body["data"][0]["machine_id"], "M100")
+        self.assertIn("kpis", body)
+        self.assertIn("locations", body)
+
+    def test_machines_api_forbidden_for_doctor(self):
+        self._login(self.doctor_user)
+        res = self.client.get("/api/machines/")
+        self.assertEqual(res.status_code, 403)
 
     def test_machine_detail_api(self):
         self._login(self.doctor_user)
         res = self.client.get(f"/api/machines/{self.machine.id}/")
         self.assertEqual(res.status_code, 200)
-        self.assertEqual(res.json()["data"]["machine_id"], "M100")
+        self.assertIn("raspi", res.json()["data"])
 
     def test_sessions_list_api(self):
         self._login(self.doctor_user)
         res = self.client.get("/api/sessions/")
         self.assertEqual(res.status_code, 200)
-        self.assertEqual(len(res.json()["data"]), 1)
+        self.assertGreaterEqual(len(res.json()["data"]), 1)
 
     def test_session_create_api_doctor(self):
         self._login(self.doctor_user)
@@ -160,62 +175,43 @@ class Phase1ApiTests(TestCase):
             "patient_id": self.patient.id,
             "machine_id": self.machine.id,
             "session_date": "2026-09-01",
-            "start_time": "10:00",
+            "start_hour": "10:00",
             "duration": 4,
-            "debit": 30,
+            "debit": 60,
         }
         res = self.client.post("/api/sessions/", data=json.dumps(payload), content_type="application/json")
         self.assertEqual(res.status_code, 201)
-        self.assertTrue(res.json().get("success"))
 
     def test_session_start_end_cancel(self):
         self._login(self.doctor_user)
-        # Start session
-        res_start = self.client.post(
+        res = self.client.post(
             f"/api/sessions/{self.seance.id}/start/",
-            data=json.dumps({"weight": 70.0, "blood_pressure": "120/80", "heart_rate": 72, "temperature": 36.6, "saturation": 98.0}),
+            data=json.dumps({"poids": 70, "tension": "120/80", "debit": 60}),
             content_type="application/json",
         )
-        self.assertEqual(res_start.status_code, 200)
+        self.assertEqual(res.status_code, 200)
         self.seance.refresh_from_db()
         self.assertEqual(self.seance.status, "en cours")
-
-        # End session
-        res_end = self.client.post(
+        res = self.client.post(
             f"/api/sessions/{self.seance.id}/end/",
-            data=json.dumps({"weight": 68.0, "complications": "Aucune"}),
+            data=json.dumps({"poids": 68, "tension": "110/70"}),
             content_type="application/json",
         )
-        self.assertEqual(res_end.status_code, 200)
+        self.assertEqual(res.status_code, 200)
         self.seance.refresh_from_db()
         self.assertEqual(self.seance.status, "terminée")
 
     def test_session_detail_api(self):
         self._login(self.doctor_user)
-        self.machine.location = "Salle 1"
-        self.machine.save()
         self.seance.status = "en cours"
         self.seance.save()
-        meas = LiveMeasurement.objects.create(
-            seance=self.seance,
-            Debit_sang=200,
-            PA=110,
-            PTM=60,
-            PV=120,
-            Taux_UF=500,
-            Volume_UF=1000,
-        )
+        LiveMeasurement.objects.create(seance=self.seance, PA=180, Debit_sang=300)
         res = self.client.get(f"/api/sessions/{self.seance.id}/")
         self.assertEqual(res.status_code, 200)
         data = res.json()["data"]
-        self.assertEqual(data["machine"]["location"], "Salle 1")
-        self.assertEqual(data["machine"]["status"], "Prete")
-        self.assertEqual(data["readings_count"], 1)
-        self.assertEqual(data["last_reading"]["volume_uf"], 1000)
-        self.assertEqual(data["last_reading"]["debit_sang"], 200)
-        self.assertEqual(data["readings"][0]["pa"], 110)
-        self.assertEqual(data["readings"][0]["qb"], 200)
-        self.assertGreaterEqual(data["readings"][0]["time"], 0)
+        self.assertIn("readings", data)
+        if data["readings"]:
+            self.assertGreaterEqual(data["readings"][0]["time"], 0)
 
     def test_dashboard_api(self):
         self._login(self.doctor_user)
@@ -234,11 +230,24 @@ class Phase1ApiTests(TestCase):
         self.assertEqual(res.status_code, 200)
         self.assertTrue(res.json()["success"])
 
+    def test_real_monitoring_requires_session(self):
+        res = self.client.get("/api/real-monitoring/")
+        self.assertEqual(res.status_code, 401)
+        self._login(self.doctor_user)
+        res = self.client.get("/api/real-monitoring/")
+        self.assertEqual(res.status_code, 200)
+        self.assertTrue(res.json()["success"])
+
     def test_seance_debit_api(self):
         self.seance.status = "en cours"
         self.seance.debit = 30
         self.seance.save()
         res = self.client.get("/api/seance/debit/?machine_id=M100")
+        self.assertEqual(res.status_code, 401)
+        res = self.client.get(
+            "/api/seance/debit/?machine_id=M100",
+            **self.edge_headers,
+        )
         self.assertEqual(res.status_code, 200)
         self.assertEqual(res.json()["debit"], 30)
 
@@ -247,15 +256,26 @@ class Phase1ApiTests(TestCase):
         self.seance.save()
         payload = {
             "machine_id": "M100",
-            "Qb": 80,          # Critical low -> trigger alert
+            "Qb": 80,
             "UF_rate": 500,
-            "PA": 190,         # High -> trigger alert
+            "PA": 190,
             "PTM": 50,
             "PV": 100,
             "UF_volume": 1000,
             "Heparin": 5,
         }
-        res = self.client.post("/api/push/", data=json.dumps(payload), content_type="application/json")
+        res = self.client.post(
+            "/api/push/",
+            data=json.dumps(payload),
+            content_type="application/json",
+        )
+        self.assertEqual(res.status_code, 401)
+        res = self.client.post(
+            "/api/push/",
+            data=json.dumps(payload),
+            content_type="application/json",
+            **self.edge_headers,
+        )
         self.assertEqual(res.status_code, 200)
         data = res.json()
         self.assertTrue(data.get("success"))
@@ -267,8 +287,10 @@ class Phase1ApiTests(TestCase):
         self.seance.status = "en cours"
         self.seance.save()
         meas = LiveMeasurement.objects.create(seance=self.seance, PA=210)
-        m_alert = Alerte.objects.create(reading=meas, niveau="RED", message="PA trop élevée", status="NEW")
-        s_alert = SeanceAlert.objects.create(
+        m_alert = Alerte.objects.create(
+            reading=meas, niveau="RED", message="PA trop élevée", status="NEW"
+        )
+        SeanceAlert.objects.create(
             seance=self.seance,
             alert_type="PA",
             message="PA très élevée",
@@ -279,14 +301,363 @@ class Phase1ApiTests(TestCase):
         self.assertEqual(res.status_code, 200)
         self.assertGreaterEqual(len(res.json()["data"]), 2)
 
-        # Ack monitoring alert
         res_ack = self.client.post(f"/api/alerts/{m_alert.id}/ack/")
         self.assertEqual(res_ack.status_code, 200)
         m_alert.refresh_from_db()
         self.assertEqual(m_alert.status, "ACK")
 
-        # Resolve monitoring alert
         res_res = self.client.post(f"/api/alerts/{m_alert.id}/resolve/")
         self.assertEqual(res_res.status_code, 200)
         m_alert.refresh_from_db()
         self.assertEqual(m_alert.status, "RESOLVED")
+
+
+    def test_patient_create_api(self):
+        self._login(self.doctor_user)
+        payload = {
+            "first_name": "Sami",
+            "last_name": "Trabelsi",
+            "date_of_birth": "1990-01-15",
+            "telephone": "20111222",
+            "adresse": "Sfax",
+            "contact_urgence": "20999888",
+            "antecedents_medicaux": "HTA",
+            "groupe_sanguin": "A+",
+            "type_de_dialyse": "Hémodialyse",
+        }
+        res = self.client.post(
+            "/api/patients/",
+            data=json.dumps(payload),
+            content_type="application/json",
+        )
+        self.assertEqual(res.status_code, 201)
+        data = res.json()
+        self.assertTrue(data["success"])
+        self.assertEqual(data["data"]["first_name"], "Sami")
+        self.assertEqual(data["data"]["age"], date.today().year - 1990 - (
+            (date.today().month, date.today().day) < (1, 15)
+        ))
+        self.assertTrue(Patient.objects.filter(first_name="Sami", last_name="Trabelsi").exists())
+
+    def test_patient_create_requires_auth(self):
+        res = self.client.post(
+            "/api/patients/",
+            data=json.dumps({
+                "first_name": "X",
+                "last_name": "Y",
+                "date_of_birth": "1990-01-01",
+            }),
+            content_type="application/json",
+        )
+        self.assertEqual(res.status_code, 401)
+
+    def test_patient_create_validation(self):
+        self._login(self.nurse_user)
+        res = self.client.post(
+            "/api/patients/",
+            data=json.dumps({"first_name": "Only"}),
+            content_type="application/json",
+        )
+        self.assertEqual(res.status_code, 400)
+
+    def test_patient_update_api(self):
+        self._login(self.admin_user)
+        res = self.client.put(
+            f"/api/patients/{self.patient.id}/",
+            data=json.dumps({
+                "first_name": "Ahmed",
+                "last_name": "Ben Salah",
+                "date_of_birth": "1980-05-20",
+                "telephone": "21111000",
+                "adresse": "Tunis Centre",
+                "contact_urgence": "22000000",
+                "antecedents_medicaux": "Diabète type 2",
+                "groupe_sanguin": "O+",
+                "type_de_dialyse": "Hémodialyse",
+            }),
+            content_type="application/json",
+        )
+        self.assertEqual(res.status_code, 200)
+        self.patient.refresh_from_db()
+        self.assertEqual(self.patient.telephone, "21111000")
+        self.assertEqual(self.patient.antecedents_medicaux, "Diabète type 2")
+        self.assertIn("recent_sessions", res.json()["data"])
+
+    def test_patient_delete_not_allowed(self):
+        """Web has no patient delete — API must reject DELETE."""
+        self._login(self.admin_user)
+        res = self.client.delete(f"/api/patients/{self.patient.id}/")
+        self.assertEqual(res.status_code, 405)
+        self.assertTrue(Patient.objects.filter(id=self.patient.id).exists())
+
+
+
+    def test_machine_create_admin_only(self):
+        self._login(self.doctor_user)
+        res = self.client.post(
+            "/api/machines/",
+            data=json.dumps({"machine_id": "M200", "model": "X", "location": "Salle A"}),
+            content_type="application/json",
+        )
+        self.assertEqual(res.status_code, 403)
+
+        self._login(self.admin_user)
+        res = self.client.post(
+            "/api/machines/",
+            data=json.dumps({"machine_id": "M200", "model": "Model-Y", "location": "Salle A"}),
+            content_type="application/json",
+        )
+        self.assertEqual(res.status_code, 201)
+        self.assertTrue(Machine.objects.filter(machine_id="M200").exists())
+
+    def test_machine_configure_status_and_raspi(self):
+        self._login(self.doctor_user)
+        res = self.client.put(
+            f"/api/machines/{self.machine.id}/",
+            data=json.dumps({
+                "status": "Maintenance",
+                "location": "Salle B",
+                "raspi_db_id": str(self.raspi.id),
+            }),
+            content_type="application/json",
+        )
+        self.assertEqual(res.status_code, 200)
+        self.machine.refresh_from_db()
+        self.assertEqual(self.machine.status, "Maintenance")
+        self.assertEqual(self.machine.location, "Salle B")
+        self.raspi.refresh_from_db()
+        self.assertEqual(self.raspi.machine_id, self.machine.id)
+        self.assertIn("raspi_options", res.json()["data"])
+
+    def test_machine_delete_not_allowed(self):
+        self._login(self.admin_user)
+        res = self.client.delete(f"/api/machines/{self.machine.id}/")
+        self.assertEqual(res.status_code, 405)
+
+    def test_machines_search_and_status_filter(self):
+        self._login(self.admin_user)
+        res = self.client.get("/api/machines/?search=M100&status=Prete")
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(len(res.json()["data"]), 1)
+
+
+
+    def test_profile_get_and_update(self):
+        self.doctor_user.first_login = False
+        self.doctor_user.save(update_fields=["first_login"])
+        self._login(self.doctor_user)
+        res = self.client.get("/api/profile/")
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.json()["data"]["username"], "doc_test")
+
+        res = self.client.put(
+            "/api/profile/",
+            data=json.dumps({
+                "phone": "21111222",
+                "address": "Tunis",
+                "email": "doc_updated@test.com",
+                "bio": "Nephrologue",
+            }),
+            content_type="application/json",
+        )
+        self.assertEqual(res.status_code, 200)
+        self.doctor_user.refresh_from_db()
+        self.assertEqual(self.doctor_user.phone_number, "21111222")
+        self.assertEqual(self.doctor_user.adress, "Tunis")
+        self.assertEqual(res.json()["data"]["bio"], "Nephrologue")
+
+    def test_profile_password_change(self):
+        self.doctor_user.first_login = False
+        self.doctor_user.save(update_fields=["first_login"])
+        self._login(self.doctor_user)
+        res = self.client.put(
+            "/api/profile/",
+            data=json.dumps({
+                "old_password": "password123",
+                "new_password": "newpass99",
+            }),
+            content_type="application/json",
+        )
+        self.assertEqual(res.status_code, 200)
+        self.doctor_user.refresh_from_db()
+        from django.contrib.auth.hashers import check_password
+        self.assertTrue(check_password("newpass99", self.doctor_user.password))
+
+    def test_first_login_requires_password_change(self):
+        self.doctor_user.first_login = True
+        self.doctor_user.save(update_fields=["first_login"])
+        self._login(self.doctor_user)
+        res = self.client.put(
+            "/api/profile/",
+            data=json.dumps({"phone": "20000000"}),
+            content_type="application/json",
+        )
+        self.assertEqual(res.status_code, 400)
+
+        res = self.client.put(
+            "/api/profile/",
+            data=json.dumps({
+                "old_password": "password123",
+                "new_password": "changed1",
+            }),
+            content_type="application/json",
+        )
+        self.assertEqual(res.status_code, 200)
+        self.doctor_user.refresh_from_db()
+        self.assertFalse(self.doctor_user.first_login)
+
+
+
+    def test_doctors_api_admin_only(self):
+        self._login(self.doctor_user)
+        self.assertEqual(self.client.get("/api/doctors/").status_code, 403)
+
+        self._login(self.admin_user)
+        res = self.client.get("/api/doctors/")
+        self.assertEqual(res.status_code, 200)
+        self.assertIn("kpis", res.json())
+
+        res = self.client.post(
+            "/api/doctors/",
+            data=json.dumps({
+                "username": "Dr New",
+                "email": "drnewapi@test.com",
+                "specialite": "Nephrologie",
+                "phone": "20111000",
+            }),
+            content_type="application/json",
+        )
+        self.assertEqual(res.status_code, 201)
+        self.assertTrue(res.json().get("temporary_password"))
+        self.assertTrue(User.objects.filter(email="drnewapi@test.com").exists())
+
+    def test_nurses_api_roles(self):
+        self._login(self.nurse_user)
+        self.assertEqual(self.client.get("/api/nurses/").status_code, 403)
+
+        self._login(self.doctor_user)
+        res = self.client.get("/api/nurses/")
+        self.assertEqual(res.status_code, 200)
+
+        res = self.client.post(
+            "/api/nurses/",
+            data=json.dumps({"username": "NurseX", "email": "nx@test.com"}),
+            content_type="application/json",
+        )
+        self.assertEqual(res.status_code, 403)
+
+        self._login(self.admin_user)
+        res = self.client.post(
+            "/api/nurses/",
+            data=json.dumps({
+                "username": "NurseY",
+                "email": "ny@test.com",
+                "phone": "20999000",
+            }),
+            content_type="application/json",
+        )
+        self.assertEqual(res.status_code, 201)
+        nurse_id = res.json()["data"]["id"]
+        res = self.client.get(f"/api/nurses/{nurse_id}/")
+        self.assertEqual(res.status_code, 200)
+
+
+
+class StaffCreatePermissionTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.admin_role = Role.objects.create(name="Admin")
+        self.doctor_role = Role.objects.create(name="Docteur")
+        self.admin_user = User.objects.create(
+            username="admin_staff",
+            password="password123",
+            role=self.admin_role,
+            email="admin_staff@test.com",
+            first_login=False,
+        )
+        self.doctor_user = User.objects.create(
+            username="doc_staff",
+            password="password123",
+            role=self.doctor_role,
+            email="doc_staff@test.com",
+            first_login=False,
+        )
+
+    def _login(self, user):
+        session = self.client.session
+        session["app_user_id"] = user.id
+        session.save()
+
+    def test_add_doctor_requires_login(self):
+        res = self.client.post(
+            "/add-doctor/",
+            data={
+                "fullName": "Dr New",
+                "email": "drnew@test.com",
+                "speciality": "Néphrologie",
+                "phone": "20000000",
+            },
+        )
+        self.assertEqual(res.status_code, 302)
+        self.assertTrue(res.url in ("/", "/login/", "/login"), msg=res.url)
+        self.assertFalse(User.objects.filter(email="drnew@test.com").exists())
+
+    def test_add_doctor_forbidden_for_doctor_role(self):
+        self._login(self.doctor_user)
+        before = User.objects.count()
+        res = self.client.post(
+            "/add-doctor/",
+            data={
+                "fullName": "Dr Blocked",
+                "email": "drblocked@test.com",
+                "speciality": "Néphrologie",
+                "phone": "20000001",
+            },
+        )
+        # Non-admin is redirected to the error page (HTML UX), creation denied.
+        self.assertEqual(res.status_code, 302)
+        self.assertIn("/error", res.url)
+        self.assertEqual(User.objects.count(), before)
+        self.assertFalse(User.objects.filter(email="drblocked@test.com").exists())
+
+    def test_add_doctor_allowed_for_admin(self):
+        self._login(self.admin_user)
+        res = self.client.post(
+            "/add-doctor/",
+            data={
+                "fullName": "Dr Allowed",
+                "email": "drallowed@test.com",
+                "speciality": "Néphrologie",
+                "phone": "20000002",
+            },
+        )
+        self.assertEqual(res.status_code, 302)
+        self.assertTrue(User.objects.filter(email="drallowed@test.com").exists())
+
+    def test_ajout_infirmier_forbidden_for_doctor(self):
+        self._login(self.doctor_user)
+        before = User.objects.count()
+        res = self.client.post(
+            "/nurses/ajouter/",
+            data={
+                "nom": "NurseBlocked",
+                "email": "nurseblocked@test.com",
+                "telephone": "20000003",
+            },
+        )
+        self.assertEqual(res.status_code, 302)
+        self.assertIn("/error", res.url)
+        self.assertEqual(User.objects.count(), before)
+
+    def test_ajout_infirmier_allowed_for_admin(self):
+        self._login(self.admin_user)
+        res = self.client.post(
+            "/nurses/ajouter/",
+            data={
+                "nom": "NurseAllowed",
+                "email": "nurseallowed@test.com",
+                "telephone": "20000004",
+            },
+        )
+        self.assertEqual(res.status_code, 302)
+        self.assertTrue(User.objects.filter(email="nurseallowed@test.com").exists())

@@ -6,18 +6,15 @@ import '../../data/repositories/auth_repository_impl.dart';
 import '../../domain/entities/user_entity.dart';
 import '../../domain/repositories/auth_repository.dart';
 
-// Global SecureStorage Provider
 final secureStorageProvider = Provider<SecureStorageService>((ref) {
   return SecureStorageService();
 });
 
-// Global ApiClient Provider
 final apiClientProvider = Provider<ApiClient>((ref) {
   final storage = ref.watch(secureStorageProvider);
   return ApiClient(storage);
 });
 
-// Auth Datasource & Repository Providers
 final authRemoteDatasourceProvider = Provider<AuthRemoteDatasource>((ref) {
   final apiClient = ref.watch(apiClientProvider);
   return AuthRemoteDatasource(apiClient);
@@ -29,7 +26,6 @@ final authRepositoryProvider = Provider<AuthRepository>((ref) {
   return AuthRepositoryImpl(remoteDs, storage);
 });
 
-// Auth State Definition
 abstract class AuthState {
   const AuthState();
 }
@@ -50,7 +46,6 @@ class AuthError extends AuthState {
   const AuthError(this.message);
 }
 
-// Auth Notifier
 class AuthNotifier extends StateNotifier<AuthState> {
   final AuthRepository _repository;
 
@@ -88,9 +83,25 @@ class AuthNotifier extends StateNotifier<AuthState> {
     await _repository.logout();
     state = AuthUnauthenticated();
   }
+
+  /// Local sign-out after a 401 from a protected API (session already cleared).
+  void forceLogout() {
+    if (state is AuthUnauthenticated) return;
+    state = AuthUnauthenticated();
+  }
+
+  /// Refresh cached user after profile/password update.
+  Future<void> applyUser(UserEntity user) async {
+    await _repository.persistUser(user);
+    state = AuthAuthenticated(user);
+  }
 }
 
-final authStateProvider = StateNotifierProvider<AuthNotifier, AuthState>((ref) {
+final authStateProvider =
+    StateNotifierProvider<AuthNotifier, AuthState>((ref) {
   final repo = ref.watch(authRepositoryProvider);
-  return AuthNotifier(repo);
+  final client = ref.watch(apiClientProvider);
+  final notifier = AuthNotifier(repo);
+  client.onUnauthorized = notifier.forceLogout;
+  return notifier;
 });

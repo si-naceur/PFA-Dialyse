@@ -58,20 +58,16 @@ class AlertsHistoryNotifier extends AsyncNotifier<List<AlertHistoryEntity>> {
     state = await AsyncValue.guard(_fetch);
   }
 
-  /// Ack (NEW) or resolve (ACK) an alert then reload the list silently.
+  /// Ack (NEW) or resolve (ACK) a monitoring.Alerte then reload.
   Future<void> actOnAlert(String alertId, {required bool resolve}) async {
-    try {
-      final repository = ref.read(alertsHistoryRepositoryProvider);
-      if (resolve) {
-        await repository.resolveAlert(alertId);
-      } else {
-        await repository.ackAlert(alertId);
-      }
-      final data = await _fetch();
-      if (!_disposed) state = AsyncValue.data(data);
-    } catch (_) {
-      // Keep the current list; the user can retry via pull-to-refresh.
+    final repository = ref.read(alertsHistoryRepositoryProvider);
+    if (resolve) {
+      await repository.resolveAlert(alertId);
+    } else {
+      await repository.ackAlert(alertId);
     }
+    final data = await _fetch();
+    if (!_disposed) state = AsyncValue.data(data);
   }
 }
 

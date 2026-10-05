@@ -13,10 +13,8 @@ const Color _gray400 = Color(0xFF9CA3AF);
 const Color _red50 = Color(0xFFFEF2F2);
 const Color _red800 = Color(0xFF991B1B);
 
-/// Flutter counter-part of Django `accounts/templates/login.html`:
-/// light blue→indigo gradient background, centered white card with the
-/// blue "activity" bolt logo, "Dialyse Manager" title, the login form with
-/// the "Mot de passe oublié ?" toggle and the red authentication error box.
+/// Flutter counter-part of Django `accounts/templates/login.html`.
+/// Password reset is hidden until a JSON API exists (web form is CSRF HTML).
 class LoginPage extends ConsumerStatefulWidget {
   const LoginPage({super.key});
 
@@ -26,17 +24,13 @@ class LoginPage extends ConsumerStatefulWidget {
 
 class _LoginPageState extends ConsumerState<LoginPage> {
   final _formKey = GlobalKey<FormState>();
-  final _resetFormKey = GlobalKey<FormState>();
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
-  final _emailController = TextEditingController();
-  bool _showReset = false;
 
   @override
   void dispose() {
     _usernameController.dispose();
     _passwordController.dispose();
-    _emailController.dispose();
     super.dispose();
   }
 
@@ -46,22 +40,6 @@ class _LoginPageState extends ConsumerState<LoginPage> {
           .read(authStateProvider.notifier)
           .login(_usernameController.text.trim(), _passwordController.text);
     }
-  }
-
-  void _submitReset() {
-    // Django answers neutrally on purpose (security): the same message is
-    // shown whether or not the email exists. Replicated here.
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text(
-          'Si un compte existe avec cet email, un lien a été envoyé.',
-        ),
-      ),
-    );
-    setState(() {
-      _showReset = false;
-      _emailController.clear();
-    });
   }
 
   @override
@@ -104,7 +82,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                     ),
                   ],
                 ),
-                child: _showReset ? _buildResetForm() : _buildLoginForm(),
+                child: _buildLoginForm(),
               ),
             ),
           ),
@@ -174,21 +152,6 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                   : null,
             ),
             const SizedBox(height: 8),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: TextButton(
-                onPressed: () => setState(() => _showReset = true),
-                style: TextButton.styleFrom(
-                  foregroundColor: _djangoBlue,
-                  padding: EdgeInsets.zero,
-                  minimumSize: const Size(0, 32),
-                ),
-                child: const Text(
-                  'Mot de passe oublié ?',
-                  style: TextStyle(fontSize: 14),
-                ),
-              ),
-            ),
             if (errorMessage != null) ...[
               const SizedBox(height: 4),
               _ErrorBox(message: errorMessage),
@@ -223,88 +186,6 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                           fontWeight: FontWeight.w600,
                         ),
                       ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildResetForm() {
-    return Padding(
-      padding: const EdgeInsets.all(24),
-      child: Form(
-        key: _resetFormKey,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const Text(
-              'Réinitialiser le mot de passe',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
-                color: Color(0xFF111827),
-              ),
-            ),
-            const SizedBox(height: 4),
-            const Text(
-              'Entrez votre email, on vous enverra un lien.',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 14, color: _gray600),
-            ),
-            const SizedBox(height: 20),
-            const _FieldLabel('Email'),
-            const SizedBox(height: 6),
-            TextFormField(
-              controller: _emailController,
-              keyboardType: TextInputType.emailAddress,
-              decoration: const InputDecoration(
-                hintText: 'name@exemple.com',
-                hintStyle: TextStyle(color: _gray400, fontSize: 14),
-              ),
-              style: const TextStyle(fontSize: 14),
-              validator: (v) => (v == null || !v.contains('@'))
-                  ? 'Veuillez saisir une adresse email valide'
-                  : null,
-            ),
-            const SizedBox(height: 20),
-            SizedBox(
-              height: 44,
-              child: ElevatedButton(
-                onPressed: () {
-                  if (_resetFormKey.currentState?.validate() ?? false) {
-                    _submitReset();
-                  }
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: _djangoBlue,
-                  foregroundColor: Colors.white,
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                ),
-                child: const Text(
-                  'Envoyer le lien',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-                ),
-              ),
-            ),
-            const SizedBox(height: 12),
-            Center(
-              child: TextButton(
-                onPressed: () => setState(() => _showReset = false),
-                style: TextButton.styleFrom(
-                  foregroundColor: _gray600,
-                  padding: EdgeInsets.zero,
-                  minimumSize: const Size(0, 32),
-                ),
-                child: const Text(
-                  'Retour à la connexion',
-                  style: TextStyle(fontSize: 14),
-                ),
               ),
             ),
           ],

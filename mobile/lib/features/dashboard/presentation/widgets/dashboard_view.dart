@@ -1,13 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/network/api_exception.dart';
-import '../../../../core/routes/app_router.dart';
 import '../../../../core/widgets/custom_button.dart';
 import '../../../../core/widgets/kpi_card.dart';
-import '../../../authentication/presentation/providers/auth_provider.dart';
 import '../../domain/entities/dashboard_kpis.dart';
 import '../providers/dashboard_provider.dart';
 
@@ -30,42 +27,6 @@ class DashboardStat {
     required this.color,
     this.subtitle,
   });
-}
-
-/// Standard dashboard AppBar actions (profile + logout).
-List<Widget> buildDashboardAppBarActions(
-  WidgetRef ref,
-  BuildContext context, {
-  required Color iconColor,
-}) {
-  return [
-    IconButton(
-      icon: Icon(Icons.people_alt_rounded, color: iconColor),
-      tooltip: 'Patients',
-      onPressed: () => context.push(AppRouter.patients),
-    ),
-    IconButton(
-      icon: Icon(Icons.monitor_heart_outlined, color: iconColor),
-      tooltip: 'Machines',
-      onPressed: () => context.push(AppRouter.machines),
-    ),
-    IconButton(
-      icon: Icon(Icons.insights_rounded, color: iconColor),
-      tooltip: 'Monitoring',
-      onPressed: () => context.push(AppRouter.monitoring),
-    ),
-    IconButton(
-      icon: Icon(Icons.person_outline, color: iconColor),
-      onPressed: () => context.push(AppRouter.profile),
-    ),
-    IconButton(
-      icon: Icon(Icons.logout_rounded, color: iconColor),
-      onPressed: () async {
-        await ref.read(authStateProvider.notifier).logout();
-        if (context.mounted) context.go(AppRouter.login);
-      },
-    ),
-  ];
 }
 
 /// Renders the welcome header plus the KPI area and handles loading, error,

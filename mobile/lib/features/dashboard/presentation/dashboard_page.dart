@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/constants/app_colors.dart';
+import '../../../core/widgets/app_shell.dart';
 import '../domain/entities/dashboard_kpis.dart';
 import 'widgets/dashboard_view.dart';
 
@@ -46,17 +47,7 @@ class AdminDashboardPage extends ConsumerWidget {
         ? authState.user.username
         : 'Admin';
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Tableau de bord — Administrateur'),
-        backgroundColor: const Color(0xFF991B1B), // Dark Red
-        foregroundColor: Colors.white,
-        actions: buildDashboardAppBarActions(
-          ref,
-          context,
-          iconColor: Colors.white,
-        ),
-      ),
+    return AppShell(
       body: DashboardView(
         username: username,
         roleTitle: 'Administrateur Système',
@@ -122,17 +113,7 @@ class DoctorDashboardPage extends ConsumerWidget {
         ? authState.user.username
         : 'Docteur';
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Tableau de bord — Docteur'),
-        backgroundColor: const Color(0xFF3730A3), // Deep Indigo
-        foregroundColor: Colors.white,
-        actions: buildDashboardAppBarActions(
-          ref,
-          context,
-          iconColor: Colors.white,
-        ),
-      ),
+    return AppShell(
       body: DashboardView(
         username: username,
         roleTitle: 'Médecin Néphrologue',
@@ -177,17 +158,7 @@ class NurseDashboardPage extends ConsumerWidget {
         ? authState.user.username
         : 'Infirmier';
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Tableau de bord — Infirmier'),
-        backgroundColor: const Color(0xFF166534), // Forest Green
-        foregroundColor: Colors.white,
-        actions: buildDashboardAppBarActions(
-          ref,
-          context,
-          iconColor: Colors.white,
-        ),
-      ),
+    return AppShell(
       body: DashboardView(
         username: username,
         roleTitle: 'Infirmier Soignant',

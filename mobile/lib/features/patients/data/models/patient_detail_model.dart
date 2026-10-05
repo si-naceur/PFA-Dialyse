@@ -1,5 +1,4 @@
 import '../../domain/entities/patient_detail_entity.dart';
-import '../../domain/entities/patient_session_entity.dart';
 import 'patient_model.dart';
 import 'patient_session_model.dart';
 
@@ -31,17 +30,7 @@ class PatientDetailModel {
   PatientDetailEntity toEntity() {
     return PatientDetailEntity(
       patient: patient.toEntity(),
-      recentSessions: recentSessions
-          .map(
-            (e) => PatientSessionEntity(
-              id: e.id,
-              sessionDate: e.sessionDate,
-              status: e.status,
-              duration: e.duration,
-              machineId: e.machineId,
-            ),
-          )
-          .toList(),
+      recentSessions: recentSessions.map((e) => e.toEntity()).toList(),
     );
   }
 }

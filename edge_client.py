@@ -1,14 +1,15 @@
+﻿import os
 """
 edge_client.py
 --------------
-Nouveau client Edge pour le système de dialyse.
-- Ne touche PAS à producer.py (code existant protégé)
+Nouveau client Edge pour le systÃ¨me de dialyse.
+- Ne touche PAS Ã  producer.py (code existant protÃ©gÃ©)
 - Support MQTT (principal) + Offline buffer + HTTP fallback
-- Mode SIMULATION (sans Raspberry / sans caméra) pour tester maintenant
+- Mode SIMULATION (sans Raspberry / sans camÃ©ra) pour tester maintenant
 
 Usage:
   python edge_client.py                  # mode simulation
-  python edge_client.py --real           # mode réel (quand le matériel arrive)
+  python edge_client.py --real           # mode rÃ©el (quand le matÃ©riel arrive)
   python edge_client.py --mqtt-only      # force MQTT seulement
 """
 
@@ -23,7 +24,7 @@ from pathlib import Path
 
 # ===================== CONFIG =====================
 RASPI_ID = "RASPI-02"
-MACHINE_ID_SIM = "M001"          # utilisé in simulation
+MACHINE_ID_SIM = "M001"          # utilisÃ© in simulation
 
 # MQTT
 MQTT_BROKER = "localhost"
@@ -31,8 +32,10 @@ MQTT_PORT = 1883
 MQTT_TOPIC_PREFIX = "dialysis/machine"
 
 # HTTP fallback (Django)
-DJANGO_PUSH_URL = "http://127.0.0.1:8000/monitoring/push/"
+DJANGO_PUSH_URL = "http://127.0.0.1:8000/api/push/"
 HEARTBEAT_URL = "http://127.0.0.1:8000/machines/raspi/heartbeat/"
+EDGE_API_KEY = os.environ.get('EDGE_API_KEY', 'dev-edge-key-change-me')
+EDGE_HEADERS = {'X-Edge-Api-Key': EDGE_API_KEY}
 DEBIT_API = "http://127.0.0.1:8000/api/seance/debit/"
 LOCAL_AI_API = "http://127.0.0.1:8001/analyze/"
 
@@ -56,7 +59,7 @@ def init_offline_db():
     """)
     conn.commit()
     conn.close()
-    print(f"[OFFLINE] Buffer ready → {OFFLINE_DB}")
+    print(f"[OFFLINE] Buffer ready â†’ {OFFLINE_DB}")
 
 
 def save_offline(payload: dict):
@@ -128,7 +131,7 @@ def publish_mqtt(client, payload: dict) -> bool:
         msg = json.dumps(payload)
         result = client.publish(topic, msg, qos=1)
         if result.rc == 0:
-            print(f"[MQTT] Published → {topic}")
+            print(f"[MQTT] Published â†’ {topic}")
             return True
         print(f"[MQTT] Publish failed rc={result.rc}")
         return False
@@ -141,7 +144,12 @@ def publish_mqtt(client, payload: dict) -> bool:
 def send_http(payload: dict) -> bool:
     try:
         import requests
-        r = requests.post(DJANGO_PUSH_URL, json=payload, timeout=8)
+        r = requests.post(
+            DJANGO_PUSH_URL,
+            json=payload,
+            headers=EDGE_HEADERS,
+            timeout=8,
+        )
         print(f"[HTTP] Status {r.status_code}")
         return r.status_code in (200, 201)
     except Exception as e:
@@ -180,7 +188,7 @@ def generate_simulated_reading(machine_id: str) -> dict:
 
 
 def analyze_image_real(image_path: str) -> dict | None:
-    """Call the existing local AI (server.py) – same as producer.py."""
+    """Call the existing local AI (server.py) â€“ same as producer.py."""
     try:
         import requests
         with open(image_path, "rb") as f:
@@ -212,18 +220,18 @@ def run(simulation: bool = True, mqtt_only: bool = False):
         else:
             machine_id = send_heartbeat()
             if not machine_id:
-                print("[HEARTBEAT] No machine assigned – wait 20s")
+                print("[HEARTBEAT] No machine assigned â€“ wait 20s")
                 time.sleep(20)
                 continue
 
         # 2. Get data
         if simulation:
             payload = generate_simulated_reading(machine_id)
-            print(f"[SIM] Generated → Qb={payload['Qb']} PA={payload['PA']} PTM={payload['PTM']}")
+            print(f"[SIM] Generated â†’ Qb={payload['Qb']} PA={payload['PA']} PTM={payload['PTM']}")
         else:
             ai_data = analyze_image_real(IMAGE_PATH)
             if not ai_data or "error" in ai_data:
-                print("[AI] No valid data – skip this cycle")
+                print("[AI] No valid data â€“ skip this cycle")
                 time.sleep(DEFAULT_INTERVAL)
                 continue
             payload = {"machine_id": machine_id, **ai_data, "raspi_id": RASPI_ID}

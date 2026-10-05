@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../../core/network/api_exception.dart';
+import '../../../../core/routes/app_router.dart';
+import '../../../authentication/presentation/providers/auth_provider.dart';
+import '../../../../core/widgets/app_shell.dart';
 import '../../../../core/widgets/custom_button.dart';
 import '../../domain/entities/machine_detail_entity.dart';
 import '../../domain/entities/machine_entity.dart';
@@ -21,8 +25,26 @@ class MachineDetailPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final detailAsync = ref.watch(machineDetailProvider(machineId));
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('Détails Machine')),
+    final auth = ref.watch(authStateProvider);
+    final canConfigure = auth is AuthAuthenticated &&
+        (auth.user.isAdmin || auth.user.isNurse || auth.user.isDoctor);
+
+    return AppShell(
+      actions: [
+        if (canConfigure)
+          IconButton(
+            tooltip: 'Configurer',
+            icon: const Icon(Icons.settings_outlined),
+            onPressed: () async {
+              final ok = await context.push<bool>(
+                AppRouter.machineConfigRoute(machineId),
+              );
+              if (ok == true) {
+                ref.invalidate(machineDetailProvider(machineId));
+              }
+            },
+          ),
+      ],
       body: detailAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (error, _) => RefreshIndicator(
@@ -54,6 +76,24 @@ class MachineDetailPage extends ConsumerWidget {
             padding: const EdgeInsets.all(16),
             children: [
               _MachineHeader(machine: detail.machine),
+              if (canConfigure) ...[
+                const SizedBox(height: 12),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: OutlinedButton.icon(
+                    onPressed: () async {
+                      final ok = await context.push<bool>(
+                        AppRouter.machineConfigRoute(machineId),
+                      );
+                      if (ok == true) {
+                        ref.invalidate(machineDetailProvider(machineId));
+                      }
+                    },
+                    icon: const Icon(Icons.settings_outlined, size: 18),
+                    label: const Text('Configurer'),
+                  ),
+                ),
+              ],
               const SizedBox(height: 16),
               _StatusCard(status: detail.machine.status),
               const SizedBox(height: 16),
@@ -63,6 +103,30 @@ class MachineDetailPage extends ConsumerWidget {
               if (detail.activeSession != null) ...[
                 const SizedBox(height: 16),
                 _ActiveSessionCard(session: detail.activeSession!),
+              ],
+              if (detail.recentSessions.isNotEmpty) ...[
+                const SizedBox(height: 16),
+                const _SectionTitle('Séances récentes'),
+                const SizedBox(height: 8),
+                Card(
+                  margin: EdgeInsets.zero,
+                  child: Column(
+                    children: detail.recentSessions
+                        .map(
+                          (s) => ListTile(
+                            title: Text(s.patient ?? 'Patient'),
+                            subtitle: Text(
+                              '${s.sessionDate ?? '—'} · ${s.duration}h · ${s.status}',
+                            ),
+                            trailing: const Icon(Icons.chevron_right),
+                            onTap: () => context.push(
+                              AppRouter.sessionDetailRoute(s.id),
+                            ),
+                          ),
+                        )
+                        .toList(),
+                  ),
+                ),
               ],
               const SizedBox(height: 16),
               const _SectionTitle('Raspberry Pi'),

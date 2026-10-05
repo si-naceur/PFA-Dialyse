@@ -313,6 +313,8 @@ def docteurs_list(request):
 
 
 
+@app_login_required
+@role_required("Admin", redirect_to="accounts:error")
 def ajout_infirmier(request):
     if request.method != "POST":
         return redirect("accounts:nurses")
@@ -342,6 +344,8 @@ def ajout_infirmier(request):
     messages.success(request, f"Infirmier ajouté. Mot de passe : {password}")
     return redirect("accounts:nurses")
 
+@app_login_required
+@role_required("Admin", redirect_to="accounts:error")
 def add_doctor(request):
     if request.method == "POST":
         fullName = request.POST.get("fullName").strip()

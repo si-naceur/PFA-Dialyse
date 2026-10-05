@@ -159,9 +159,20 @@ class SessionDetailPage extends ConsumerWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Qualité: ${detail.rapport!.qualiteSeance ?? '—'}'),
+                      Text(
+                        'Qualité: ${detail.rapport!.qualiteSeance ?? '—'}',
+                      ),
                       if (detail.rapport!.nomFichier != null)
                         Text('Fichier: ${detail.rapport!.nomFichier}'),
+                      const SizedBox(height: 8),
+                      const Text(
+                        'Le contenu HTML du rapport n’est pas exposé par l’API. '
+                        'Ouvrez le dossier sur le site Django pour le visualiser.',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Color(0xFF6B7280),
+                        ),
+                      ),
                     ],
                   ),
                 ),

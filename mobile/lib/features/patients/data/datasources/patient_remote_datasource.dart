@@ -1,6 +1,7 @@
 import '../../../../core/config/api_endpoints.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/network/api_exception.dart';
+import '../../domain/repositories/patient_repository.dart';
 import '../models/patient_detail_model.dart';
 import '../models/patient_model.dart';
 
@@ -10,9 +11,6 @@ class PatientRemoteDatasource {
   PatientRemoteDatasource(this._apiClient);
 
   /// GET /api/patients/?search=<query>
-  ///
-  /// Django wraps the payload as { success: true, data: [...], count: N }.
-  /// Returns the parsed patients plus the `count` returned by Django.
   Future<({List<PatientModel> items, int total})> getPatients({
     String search = '',
   }) async {
@@ -36,9 +34,6 @@ class PatientRemoteDatasource {
   }
 
   /// GET /api/patients/<id>/
-  ///
-  /// Django wraps the payload as { success: true, data: { ... } } where data
-  /// contains the patient fields plus `recent_sessions`.
   Future<PatientDetailModel> getPatient(int patientId) async {
     final response = await _apiClient.get(
       '${ApiEndpoints.patientDetail}$patientId/',
@@ -50,5 +45,38 @@ class PatientRemoteDatasource {
       return PatientDetailModel.fromJson(data['data'] as Map<String, dynamic>);
     }
     throw ApiException('Format de réponse invalide pour le patient');
+  }
+
+  /// POST /api/patients/
+  Future<PatientModel> createPatient(PatientWritePayload payload) async {
+    final response = await _apiClient.post(
+      ApiEndpoints.patients,
+      data: payload.toJson(),
+    );
+    final data = response.data;
+    if (data is Map<String, dynamic> &&
+        data['success'] == true &&
+        data['data'] is Map<String, dynamic>) {
+      return PatientModel.fromJson(data['data'] as Map<String, dynamic>);
+    }
+    throw ApiException('Impossible de créer le patient');
+  }
+
+  /// PUT /api/patients/<id>/
+  Future<PatientDetailModel> updatePatient(
+    int patientId,
+    PatientWritePayload payload,
+  ) async {
+    final response = await _apiClient.put(
+      '${ApiEndpoints.patientDetail}$patientId/',
+      data: payload.toJson(),
+    );
+    final data = response.data;
+    if (data is Map<String, dynamic> &&
+        data['success'] == true &&
+        data['data'] is Map<String, dynamic>) {
+      return PatientDetailModel.fromJson(data['data'] as Map<String, dynamic>);
+    }
+    throw ApiException('Impossible de modifier le patient');
   }
 }

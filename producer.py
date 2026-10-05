@@ -1,19 +1,22 @@
+﻿import os
 import requests
 import time
 
 # ===================== CONFIG =====================
+EDGE_API_KEY = os.environ.get('EDGE_API_KEY', 'dev-edge-key-change-me')
+EDGE_HEADERS = {'X-Edge-Api-Key': EDGE_API_KEY}
 LOCAL_AI_API  = "http://127.0.0.1:8001/analyze/"
 DJANGO_SAVE_API = "http://127.0.0.1:8000/api/monitoring/save/"
 
-DJANGO_API = "http://127.0.0.1:8000/monitoring/push/"
+DJANGO_API = "http://127.0.0.1:8000/api/push/"
 DEBIT_API     = "http://127.0.0.1:8000/api/seance/debit/"
 HEARTBEAT_URL = "http://127.0.0.1:8000/machines/raspi/heartbeat/"
 
-RASPI_ID      = "RASPI-02"   # ← identifiant unique de ce Raspi, codé en dur une seule fois
+RASPI_ID      = "RASPI-02"   # â† identifiant unique de ce Raspi, codÃ© en dur une seule fois
 IMAGE_PATH = "frame.jpg"
 DEFAULT_DEBIT = 60
 
-# Machine assignée — récupérée dynamiquement via heartbeat, pas codée en dur
+# Machine assignÃ©e â€” rÃ©cupÃ©rÃ©e dynamiquement via heartbeat, pas codÃ©e en dur
 MACHINE_ID = None
 
 
@@ -21,7 +24,7 @@ MACHINE_ID = None
 def send_heartbeat() -> str | None:
     """
     Signale que ce Raspi est en ligne.
-    Retourne le machine_id assigné à ce Raspi, ou None si non assigné.
+    Retourne le machine_id assignÃ© Ã  ce Raspi, ou None si non assignÃ©.
     """
     try:
         r = requests.post(
@@ -35,40 +38,41 @@ def send_heartbeat() -> str | None:
             is_active  = data.get("is_active", True)
 
             if not is_active:
-                print(f"[HEARTBEAT] Raspi désactivé sur le serveur.")
+                print(f"[HEARTBEAT] Raspi dÃ©sactivÃ© sur le serveur.")
                 return None
 
             if machine_id:
-                print(f"[HEARTBEAT] Machine assignée : {machine_id}")
+                print(f"[HEARTBEAT] Machine assignÃ©e : {machine_id}")
             else:
-                print(f"[HEARTBEAT] Aucune machine assignée à ce Raspi.")
+                print(f"[HEARTBEAT] Aucune machine assignÃ©e Ã  ce Raspi.")
 
             return machine_id
         else:
-            print(f"[HEARTBEAT] Réponse inattendue {r.status_code}")
+            print(f"[HEARTBEAT] RÃ©ponse inattendue {r.status_code}")
             return None
     except Exception as e:
-        print(f"[HEARTBEAT] Erreur réseau : {e}")
+        print(f"[HEARTBEAT] Erreur rÃ©seau : {e}")
         return None
 
 
-# ===================== RÉCUPÉRATION DU DÉBIT =====================
+# ===================== RÃ‰CUPÃ‰RATION DU DÃ‰BIT =====================
 def get_debit(machine_id: str) -> int:
     try:
         r = requests.get(
             DEBIT_API,
             params={"machine_id": machine_id},
+            headers=EDGE_HEADERS,
             timeout=5
         )
         if r.status_code == 200:
             debit = r.json().get("debit", DEFAULT_DEBIT)
-            print(f"[DEBIT] Intervalle reçu : {debit}s")
+            print(f"[DEBIT] Intervalle reÃ§u : {debit}s")
             return int(debit)
         else:
-            print(f"[DEBIT] Réponse inattendue {r.status_code}, fallback {DEFAULT_DEBIT}s")
+            print(f"[DEBIT] RÃ©ponse inattendue {r.status_code}, fallback {DEFAULT_DEBIT}s")
             return DEFAULT_DEBIT
     except Exception as e:
-        print(f"[DEBIT] Erreur réseau : {e}, fallback {DEFAULT_DEBIT}s")
+        print(f"[DEBIT] Erreur rÃ©seau : {e}, fallback {DEFAULT_DEBIT}s")
         return DEFAULT_DEBIT
 
 
@@ -83,7 +87,7 @@ def analyze_image(image_path: str):
 
         if response.status_code == 200:
             data = response.json()
-            print("Résultat IA:", data)
+            print("RÃ©sultat IA:", data)
             return data
         else:
             print("Erreur serveur IA:", response.text)
@@ -97,14 +101,19 @@ def analyze_image(image_path: str):
 # ===================== ENVOI DJANGO =====================
 def send_to_django(values: dict, machine_id: str):
     if not values or "error" in values:
-        print("Données invalides, non envoyées.")
+        print("DonnÃ©es invalides, non envoyÃ©es.")
         return
 
-    # machine_id injecté dynamiquement — plus codé en dur
+    # machine_id injectÃ© dynamiquement â€” plus codÃ© en dur
     payload = {"machine_id": machine_id, **values}
 
     try:
-        r = requests.post(DJANGO_API, json=payload, timeout=10)
+        r = requests.post(
+            DJANGO_API,
+            json=payload,
+            headers=EDGE_HEADERS,
+            timeout=10,
+        )
         print("Django Status:", r.status_code)
     except Exception as e:
         print("Erreur Django:", e)
@@ -112,28 +121,28 @@ def send_to_django(values: dict, machine_id: str):
 
 # ===================== BOUCLE PRINCIPALE =====================
 if __name__ == "__main__":
-    print(f"Démarrage du client Raspberry Pi [{RASPI_ID}]...")
+    print(f"DÃ©marrage du client Raspberry Pi [{RASPI_ID}]...")
 
     while True:
-        # 1. Heartbeat → récupère la machine assignée dynamiquement
+        # 1. Heartbeat â†’ rÃ©cupÃ¨re la machine assignÃ©e dynamiquement
         machine_id = send_heartbeat()
 
         if not machine_id:
-            print("Aucune machine assignée — attente 30s avant de réessayer...\n")
+            print("Aucune machine assignÃ©e â€” attente 30s avant de rÃ©essayer...\n")
             time.sleep(30)
             continue
 
-        # 2. Récupérer l'intervalle d'envoi configuré pour cette séance
+        # 2. RÃ©cupÃ©rer l'intervalle d'envoi configurÃ© pour cette sÃ©ance
         debit = get_debit(machine_id)
 
         # 3. Capturer et analyser l'image
         ai_values = analyze_image(IMAGE_PATH)
         
 
-        # 4. Envoyer les résultats à Django
+        # 4. Envoyer les rÃ©sultats Ã  Django
         if ai_values:
             send_to_django(ai_values, machine_id)
 
-        # 5. Attendre l'intervalle configuré
+        # 5. Attendre l'intervalle configurÃ©
         print(f"Attente {debit} secondes...\n")
         time.sleep(debit)

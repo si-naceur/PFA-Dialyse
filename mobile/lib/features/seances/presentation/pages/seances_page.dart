@@ -6,6 +6,7 @@ import '../../../../core/network/api_exception.dart';
 import '../../../../core/routes/app_router.dart';
 import '../../../../core/widgets/app_shell.dart';
 import '../../../../core/widgets/custom_button.dart';
+import '../../../authentication/presentation/providers/auth_provider.dart';
 import '../../../machines/domain/entities/machine_entity.dart';
 import '../../../machines/presentation/providers/machines_provider.dart';
 import '../../../patients/presentation/providers/patients_provider.dart';
@@ -24,7 +25,7 @@ class SeancesPage extends ConsumerWidget {
     final machinesAsync = ref.watch(machinesProvider);
     final notifier = ref.read(seancesPlanningProvider.notifier);
 
-    final machines = machinesAsync.valueOrNull ?? const <MachineEntity>[];
+    final machines = machinesAsync.valueOrNull?.machines ?? const <MachineEntity>[];
 
     return AppShell(
       actions: [
@@ -101,6 +102,10 @@ class _Header extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final auth = ref.watch(authStateProvider);
+    final user = auth is AuthAuthenticated ? auth.user : null;
+    final canCreate = user != null && (user.isAdmin || user.isDoctor);
+
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -120,35 +125,37 @@ class _Header extends ConsumerWidget {
             ],
           ),
         ),
-        const SizedBox(width: 12),
-        ElevatedButton.icon(
-          style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFFDBEAFE),
-            foregroundColor: const Color(0xFF1D4ED8),
-            elevation: 0,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
-              side: const BorderSide(color: Color(0xFFBFDBFE)),
+        if (canCreate) ...[
+          const SizedBox(width: 12),
+          ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFDBEAFE),
+              foregroundColor: const Color(0xFF1D4ED8),
+              elevation: 0,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+                side: const BorderSide(color: Color(0xFFBFDBFE)),
+              ),
+            ),
+            onPressed: () async {
+              final created = await showModalBottomSheet<bool>(
+                context: context,
+                isScrollControlled: true,
+                backgroundColor: Colors.transparent,
+                builder: (_) => _NewSessionSheet(initialDate: data.date),
+              );
+              if (created == true) {
+                await ref.read(seancesPlanningProvider.notifier).refresh();
+              }
+            },
+            icon: const Icon(Icons.add_rounded, size: 18),
+            label: const Text(
+              'Nouvelle séance',
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
             ),
           ),
-          onPressed: () async {
-            final created = await showModalBottomSheet<bool>(
-              context: context,
-              isScrollControlled: true,
-              backgroundColor: Colors.transparent,
-              builder: (_) => _NewSessionSheet(initialDate: data.date),
-            );
-            if (created == true) {
-              await ref.read(seancesPlanningProvider.notifier).refresh();
-            }
-          },
-          icon: const Icon(Icons.add_rounded, size: 18),
-          label: const Text(
-            'Nouvelle séance',
-            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-          ),
-        ),
+        ],
       ],
     );
   }
@@ -966,8 +973,8 @@ class _NewSessionSheetState extends ConsumerState<_NewSessionSheet> {
             .toList() ??
         const [];
     final machines =
-        machinesAsync.valueOrNull
-            ?.map((m) => (id: m.id, label: m.machineId))
+        machinesAsync.valueOrNull?.machines
+            .map((m) => (id: m.id, label: m.machineId))
             .toList() ??
         const [];
 

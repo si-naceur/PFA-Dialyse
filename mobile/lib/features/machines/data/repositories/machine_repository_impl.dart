@@ -1,5 +1,6 @@
 import '../../domain/entities/machine_detail_entity.dart';
 import '../../domain/entities/machine_entity.dart';
+import '../../domain/entities/machine_list_result.dart';
 import '../../domain/repositories/machine_repository.dart';
 import '../datasources/machine_remote_datasource.dart';
 
@@ -9,22 +10,40 @@ class MachineRepositoryImpl implements MachineRepository {
   MachineRepositoryImpl(this._remoteDatasource);
 
   @override
-  Future<List<MachineEntity>> getMachines({
+  Future<MachineListResult> getMachines({
     String search = '',
     String status = '',
     String location = '',
   }) async {
-    final models = await _remoteDatasource.getMachines(
+    final response = await _remoteDatasource.getMachines(
       search: search,
       status: status,
       location: location,
     );
-    return models.map((model) => model.toEntity()).toList();
+    return MachineListResult(
+      machines: response.items.map((m) => m.toEntity()).toList(),
+      kpis: response.kpis,
+      locations: response.locations,
+      statusChoices: response.statusChoices,
+    );
   }
 
   @override
   Future<MachineDetailEntity> getMachine(int machineId) async {
-    final model = await _remoteDatasource.getMachine(machineId);
-    return model.toEntity();
+    return (await _remoteDatasource.getMachine(machineId)).toEntity();
+  }
+
+  @override
+  Future<MachineEntity> createMachine(MachineCreatePayload payload) async {
+    return (await _remoteDatasource.createMachine(payload)).toEntity();
+  }
+
+  @override
+  Future<MachineDetailEntity> configureMachine(
+    int machineId,
+    MachineConfigurePayload payload,
+  ) async {
+    return (await _remoteDatasource.configureMachine(machineId, payload))
+        .toEntity();
   }
 }

@@ -1,20 +1,20 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/constants/app_colors.dart';
+import '../../../authentication/presentation/providers/auth_provider.dart';
 import '../../../../core/network/api_exception.dart';
 import '../../../../core/routes/app_router.dart';
 import '../../../../core/widgets/app_shell.dart';
 import '../../../../core/widgets/custom_button.dart';
-import '../../domain/entities/machine_entity.dart';
 import '../providers/machines_provider.dart';
 import '../widgets/machine_card.dart';
 
 /// Machines screen mirroring Django `machines.html`:
-/// KPI cards (Total, Prêtes, Maintenance, Hors Service, Réservées),
+/// KPI cards (Total, PrÃªtes, Maintenance, Hors Service, RÃ©servÃ©es),
 /// search + status + location filters, white machine cards with
-/// status dot/badge, info rows, and "Détails"/"Config" actions.
+/// status dot/badge, info rows, and "DÃ©tails"/"Config" actions.
 class MachinesPage extends ConsumerStatefulWidget {
   const MachinesPage({super.key});
 
@@ -32,7 +32,6 @@ class _MachinesPageState extends ConsumerState<MachinesPage> {
     'Hors Service',
     'Reserve',
   ];
-  final _locationOptions = const <String>[]; // Filled from API if needed
 
   @override
   void initState() {
@@ -69,31 +68,28 @@ class _MachinesPageState extends ConsumerState<MachinesPage> {
   Widget build(BuildContext context) {
     final machinesAsync = ref.watch(machinesProvider);
     final notifier = ref.read(machinesProvider.notifier);
+    final auth = ref.watch(authStateProvider);
+    final user = auth is AuthAuthenticated ? auth.user : null;
+    final isAdmin = user?.isAdmin ?? false;
 
-    // Compute KPI counts from the loaded data
-    int total = 0, pretes = 0, maintenance = 0, horsService = 0, reserve = 0;
-    if (machinesAsync is AsyncData<List<MachineEntity>>) {
-      final list = machinesAsync.value;
-      total = list.length;
-      for (final m in list) {
-        switch (m.status) {
-          case 'Prete':
-            pretes++;
-            break;
-          case 'Maintenance':
-            maintenance++;
-            break;
-          case 'Hors Service':
-            horsService++;
-            break;
-          case 'Reserve':
-            reserve++;
-            break;
-        }
-      }
-    }
+    final kpis = machinesAsync.asData?.value.kpis;
+    final total = kpis?.total ?? 0;
+    final pretes = kpis?.pretes ?? 0;
+    final maintenance = kpis?.maintenance ?? 0;
+    final horsService = kpis?.horsService ?? 0;
+    final reserve = kpis?.reserve ?? 0;
+    final locationOptions = machinesAsync.asData?.value.locations ?? const <String>[];
 
     return AppShell(
+      floatingActionButton: isAdmin
+          ? FloatingActionButton.extended(
+              onPressed: () => context.push(AppRouter.machineCreateRoute),
+              backgroundColor: const Color(0xFF2563EB),
+              foregroundColor: Colors.white,
+              icon: const Icon(Icons.add_rounded),
+              label: const Text('Nouvelle machine'),
+            )
+          : null,
       actions: [
         if (_searchController.text.isNotEmpty ||
             _selectedStatus.isNotEmpty ||
@@ -112,7 +108,7 @@ class _MachinesPageState extends ConsumerState<MachinesPage> {
           const SizedBox(height: 12),
 
           // Search + Filters
-          _buildSearchAndFilters(),
+          _buildSearchAndFilters(locationOptions),
 
           // Machine list
           Expanded(
@@ -128,7 +124,7 @@ class _MachinesPageState extends ConsumerState<MachinesPage> {
                 error: (error, _) => _CenteredScrollable(
                   child: _ErrorState(error: error, onRetry: notifier.refresh),
                 ),
-                data: (machines) => machines.isEmpty
+                data: (result) => result.machines.isEmpty
                     ? _CenteredScrollable(
                         child: _EmptyState(
                           hasSearch:
@@ -140,8 +136,8 @@ class _MachinesPageState extends ConsumerState<MachinesPage> {
                       )
                     : ListView(
                         physics: const AlwaysScrollableScrollPhysics(),
-                        padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
-                        children: machines
+                        padding: const EdgeInsets.fromLTRB(16, 16, 16, 80),
+                        children: result.machines
                             .map(
                               (m) => Padding(
                                 padding: const EdgeInsets.only(bottom: 16),
@@ -150,7 +146,9 @@ class _MachinesPageState extends ConsumerState<MachinesPage> {
                                   onTap: () => context.push(
                                     AppRouter.machineDetailRoute(m.id),
                                   ),
-                                  onConfigTap: () {}, // TODO: config page
+                                  onConfigTap: () => context.push(
+                                    AppRouter.machineConfigRoute(m.id),
+                                  ),
                                 ),
                               ),
                             )
@@ -189,11 +187,11 @@ class _MachinesPageState extends ConsumerState<MachinesPage> {
               const SizedBox(width: 12),
               Expanded(
                 child: _KpiCard(
-                  'Prêtes',
+                  'PrÃªtes',
                   pretes,
                   Icons.check_circle_outline_rounded,
                   const Color(0xFF10B981),
-                  'Prêtes à l\'usage',
+                  'PrÃªtes Ã  l\'usage',
                 ),
               ),
             ],
@@ -217,7 +215,7 @@ class _MachinesPageState extends ConsumerState<MachinesPage> {
                   horsService,
                   Icons.error_outline_rounded,
                   AppColors.danger,
-                  'À vérifier',
+                  'Ã€ vÃ©rifier',
                 ),
               ),
             ],
@@ -227,11 +225,11 @@ class _MachinesPageState extends ConsumerState<MachinesPage> {
             children: [
               Expanded(
                 child: _KpiCard(
-                  'Réservées',
+                  'RÃ©servÃ©es',
                   reserve,
                   Icons.bookmark_outline_rounded,
                   const Color(0xFFF59E0B),
-                  'Réservées / Inactives',
+                  'RÃ©servÃ©es / Inactives',
                 ),
               ),
             ],
@@ -241,7 +239,7 @@ class _MachinesPageState extends ConsumerState<MachinesPage> {
     );
   }
 
-  Widget _buildSearchAndFilters() {
+  Widget _buildSearchAndFilters(List<String> locationOptions) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
       child: Column(
@@ -310,7 +308,7 @@ class _MachinesPageState extends ConsumerState<MachinesPage> {
                       value: '',
                       child: Text('Toutes les salles'),
                     ),
-                    ..._locationOptions.map(
+                    ...locationOptions.map(
                       (s) => DropdownMenuItem(value: s, child: Text(s)),
                     ),
                   ],
@@ -431,7 +429,7 @@ class _ErrorState extends StatelessWidget {
           ),
           const SizedBox(height: 16),
           CustomButton(
-            text: 'Réessayer',
+            text: 'RÃ©essayer',
             icon: Icons.refresh_rounded,
             backgroundColor: const Color(0xFF2563EB),
             onPressed: onRetry,
@@ -465,7 +463,7 @@ class _EmptyState extends StatelessWidget {
               border: Border.all(color: const Color(0xFFFDE68A)),
             ),
             child: const Text(
-              'Aucun résultat trouvé pour votre recherche.',
+              'Aucun rÃ©sultat trouvÃ© pour votre recherche.',
               textAlign: TextAlign.center,
               style: TextStyle(color: Color(0xFF854D0E)),
             ),
@@ -473,7 +471,7 @@ class _EmptyState extends StatelessWidget {
           if (hasSearch) ...[
             const SizedBox(height: 16),
             CustomButton(
-              text: 'Réinitialiser les filtres',
+              text: 'RÃ©initialiser les filtres',
               icon: Icons.filter_list_off_rounded,
               backgroundColor: const Color(0xFF2563EB),
               onPressed: onReset,
@@ -498,3 +496,4 @@ class _CenteredScrollable extends StatelessWidget {
     );
   }
 }
+

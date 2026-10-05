@@ -42,8 +42,19 @@ class AlertsHistoryPage extends ConsumerWidget {
           ),
           data: (alerts) => _AlertsBody(
             alerts: alerts,
-            onAct: (id, {required bool resolve}) =>
-                notifier.actOnAlert(id, resolve: resolve),
+            onAct: (id, {required bool resolve}) async {
+              try {
+                await notifier.actOnAlert(id, resolve: resolve);
+              } catch (e) {
+                if (!context.mounted) return;
+                final msg = e is ApiException
+                    ? e.message
+                    : 'Action impossible sur cette alerte';
+                ScaffoldMessenger.of(
+                  context,
+                ).showSnackBar(SnackBar(content: Text(msg)));
+              }
+            },
           ),
         ),
       ),
@@ -133,7 +144,7 @@ class _AlertCard extends StatelessWidget {
             children: [
               _label('Niveau'),
               const SizedBox(width: 8),
-              _LevelBadge(level: alert.dangerLevel),
+              _LevelBadge(alert: alert),
             ],
           ),
           const SizedBox(height: 10),
@@ -145,7 +156,8 @@ class _AlertCard extends StatelessWidget {
               height: 1.4,
             ),
           ),
-          if (alert.status == 'NEW' || alert.status == 'ACK') ...[
+          if (alert.isMonitoringAlert &&
+              (alert.status == 'NEW' || alert.status == 'ACK')) ...[
             const SizedBox(height: 12),
             Align(
               alignment: Alignment.centerRight,
@@ -231,17 +243,26 @@ class _AlertCard extends StatelessWidget {
   }
 }
 
-/// Niveau badge — matches the template: HIGH red, everything else amber.
+/// Niveau: RED/HIGH = red, YELLOW/MEDIUM = amber.
 class _LevelBadge extends StatelessWidget {
-  final String level;
+  final AlertHistoryEntity alert;
 
-  const _LevelBadge({required this.level});
+  const _LevelBadge({required this.alert});
 
   @override
   Widget build(BuildContext context) {
-    final isHigh = level.toUpperCase() == 'HIGH';
-    final Color bg = isHigh ? const Color(0xFFFEE2E2) : const Color(0xFFFEF3C7);
-    final Color fg = isHigh ? const Color(0xFFB91C1C) : const Color(0xFFB45309);
+    final Color bg;
+    final Color fg;
+    if (alert.isCritical) {
+      bg = const Color(0xFFFEE2E2);
+      fg = const Color(0xFFB91C1C);
+    } else if (alert.isWarning) {
+      bg = const Color(0xFFFEF3C7);
+      fg = const Color(0xFFB45309);
+    } else {
+      bg = const Color(0xFFF3F4F6);
+      fg = const Color(0xFF374151);
+    }
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
       decoration: BoxDecoration(
@@ -249,7 +270,7 @@ class _LevelBadge extends StatelessWidget {
         borderRadius: BorderRadius.circular(999),
       ),
       child: Text(
-        level.toUpperCase(),
+        alert.levelBadgeText,
         style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: fg),
       ),
     );

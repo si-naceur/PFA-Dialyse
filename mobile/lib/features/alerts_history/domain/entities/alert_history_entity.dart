@@ -33,15 +33,42 @@ class AlertHistoryEntity {
   bool get isAcknowledged => status == 'ACK';
   bool get isResolved => status == 'RESOLVED';
 
+  bool get isMonitoringAlert =>
+      source.toLowerCase().contains('monitoring');
+
+  bool get isCritical {
+    final a = dangerLevel.toUpperCase();
+    final b = severity.toUpperCase();
+    return a == 'HIGH' || a == 'RED' || b == 'HIGH' || b == 'RED';
+  }
+
+  bool get isWarning {
+    final a = dangerLevel.toUpperCase();
+    final b = severity.toUpperCase();
+    return a == 'MEDIUM' || a == 'YELLOW' || b == 'MEDIUM' || b == 'YELLOW';
+  }
+
   String get levelLabel {
+    if (isCritical) return 'Critique';
+    if (isWarning) return 'Avertissement';
     switch (dangerLevel.toUpperCase()) {
-      case 'HIGH':
-        return 'Critique';
-      case 'MEDIUM':
-        return 'Modéré';
       case 'LOW':
+      case 'INFO':
+        return 'Info';
       default:
-        return 'Faible';
+        return dangerLevel.isEmpty ? '—' : dangerLevel;
     }
+  }
+
+  String get levelBadgeText {
+    if (isCritical) {
+      final a = dangerLevel.toUpperCase();
+      return (a == 'RED' || a == 'HIGH') ? a : 'RED';
+    }
+    if (isWarning) {
+      final a = dangerLevel.toUpperCase();
+      return (a == 'YELLOW' || a == 'MEDIUM') ? a : 'YELLOW';
+    }
+    return dangerLevel.toUpperCase();
   }
 }

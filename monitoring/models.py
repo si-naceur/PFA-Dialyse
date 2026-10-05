@@ -82,6 +82,9 @@ class LiveMeasurement(models.Model):
     Volume_UF = models.FloatField(null=True, blank=True)
     Heparine = models.FloatField(null=True, blank=True)
 
+    image = models.ImageField(upload_to="machine_images/", null=True, blank=True)
+    source = models.CharField(max_length=50, default="AI_OCR", null=True, blank=True)
+    status_validation = models.CharField(max_length=20, default="VALIDATED", null=True, blank=True)
 
     class Meta:
         db_table = "live_measurements"

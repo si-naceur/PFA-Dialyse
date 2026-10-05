@@ -1,18 +1,15 @@
+"""
+monitoring/services.py
+-----------------------
+Service d'analyse des seuils et des alertes.
+"""
+
+from monitoring.alerte import analyser_mesure
+
 def check_thresholds(reading):
-    alerts = []
-
-    if reading.PA is not None and reading.PA > 180:
-        alerts.append(("RED", "Pression artérielle trop élevée"))
-    elif reading.PA is not None and reading.PA < 80:
-        alerts.append(("RED", "Pression artérielle trop basse"))
-
-    if reading.PV is not None and reading.PV > 250:
-        alerts.append(("YELLOW", "Pression veineuse élevée"))
-
-    if reading.PTM is not None and reading.PTM > 100:
-        alerts.append(("YELLOW", "PTM élevée"))
-
-    if reading.Debit_sang is not None and reading.Debit_sang < 200:
-        alerts.append(("RED", "Débit sanguin faible"))
-
-    return alerts
+    """
+    Délègue l'analyse à la fonction centrale analyser_mesure()
+    pour bénéficier de la gestion des seuils de séance et du cooldown de 15 min.
+    """
+    alerts = analyser_mesure(reading)
+    return [(a.danger_level, a.message) for a in alerts]
